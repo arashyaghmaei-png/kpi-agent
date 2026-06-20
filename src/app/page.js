@@ -150,11 +150,18 @@ export default function KPIAgent() {
     finally { setLoading(false); }
   };
 
+  const loadScript = (src) => new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+    const s = document.createElement("script");
+    s.src = src; s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+
   const exportScreenshot = async () => {
     setExporting(true);
     try {
-      const html2canvas = (await import('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/+esm')).default;
-      const canvas = await html2canvas(dashboardRef.current, { backgroundColor: "#0a0e1a", scale: 2 });
+      await loadScript("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js");
+      const canvas = await window.html2canvas(dashboardRef.current, { backgroundColor: "#0a0e1a", scale: 2 });
       const link = document.createElement("a");
       link.download = `KPI-${new Date().toLocaleDateString("de-DE").replace(/\./g, "-")}.png`;
       link.href = canvas.toDataURL("image/png"); link.click();
@@ -165,9 +172,10 @@ export default function KPIAgent() {
   const exportPDF = async () => {
     setExporting(true);
     try {
-      const html2canvas = (await import('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/+esm')).default;
-      const { jsPDF } = await import('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/+esm');
-      const canvas = await html2canvas(dashboardRef.current, { backgroundColor: "#0a0e1a", scale: 2 });
+      await loadScript("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js");
+      await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+      const canvas = await window.html2canvas(dashboardRef.current, { backgroundColor: "#0a0e1a", scale: 2 });
+      const jsPDF = window.jspdf.jsPDF;
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const w = pdf.internal.pageSize.getWidth();
       pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 12, w, (canvas.height * w) / canvas.width);
