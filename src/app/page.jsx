@@ -34,11 +34,11 @@ OneTouch: A1=erster Besuch erledigt (Ziel >=60%), AX=Abbruch, A0=nicht erledigt 
 Aufgabe: Techniker-KPIs bewerten, Frühwarnungen bei >=7% Abweichung, Leitstellen-Empfehlungen.
 Antworte auf Deutsch, direkt und operativ.
 
-PFLICHT - IMMER AM ENDE AUSGEBEN - OHNE AUSNAHME:
+PFLICHT - IMMER AM ENDE - JEDEN TECHNIKER AUFLISTEN - AUCH GUTE:
 <MASSNAHMEN>
-{"massnahmen":[{"name":"Vollständiger Techniker Name","status":"kritisch|warnung|gut","massnahme":"Konkrete Maßnahme","betreff":"KPI Maßnahme"}]}
+{"massnahmen":[{"name":"Vollständiger Name","status":"kritisch|warnung|gut","massnahme":"Bei gut: Lob in einem Satz. Bei warnung/kritisch: Konkrete Maßnahme.","betreff":"Bei gut: Lob KPI-Werte. Bei kritisch: KPI Maßnahme"}]}
 </MASSNAHMEN>
-Jeden Techniker einzeln auflisten. Kein Markdown, kein Kommentar innerhalb des JSON.
+Status gut = Lob aussprechen. Kein Markdown im JSON.
 
 ## KPI-Übersicht
 ## Frühwarnungen
@@ -205,18 +205,21 @@ function parseMassnahmen(text) {
   // Versuch 3: Text-Parsing - Namen aus Analyse extrahieren
   try {
     const massnahmen = [];
-    // Suche nach "Name – Massnahme" oder "Name: Massnahme" Pattern
     const lines = text.split("\n");
     let currentName = null;
+    let currentStatus = "warnung";
     for (const line of lines) {
       const boldName = line.match(/\*\*([A-Z][a-z]+ [A-Z][a-z]+.*?)\*\*/);
-      if (boldName) currentName = boldName[1].replace(/\s*[-–].*/, "").trim();
+      if (boldName) {
+        currentName = boldName[1].replace(/\s*[-–].*/, "").trim();
+        currentStatus = line.toLowerCase().includes("gut") || line.toLowerCase().includes("best performer") || line.toLowerCase().includes("unauffaellig") || line.toLowerCase().includes("unauffällig") ? "gut" : line.toLowerCase().includes("kritisch") ? "kritisch" : "warnung";
+      }
       if (currentName && line.includes("- ") && line.length > 20 && !line.includes("**")) {
         const massnahme = line.replace(/^[-\s]+/, "").trim();
         if (massnahme.length > 10) {
           const existing = massnahmen.find(m => m.name === currentName);
           if (!existing) {
-            massnahmen.push({ name: currentName, status: "warnung", massnahme, betreff: "KPI Massnahme " + currentName });
+            massnahmen.push({ name: currentName, status: currentStatus, massnahme, betreff: currentStatus === "gut" ? "Lob: Sehr gute KPI-Werte" : "KPI Massnahme " + currentName });
           }
         }
       }
@@ -398,7 +401,9 @@ function MassnahmenPanel({ massnahmen, parseError, kontakte }) {
       <div style={{ fontSize: 13, fontWeight: 700, color: "#f9fafb", marginBottom: 12, borderBottom: "1px solid #1f2937", paddingBottom: 8 }}>📋 Maßnahmen pro Techniker</div>
       {massnahmen.map((m, i) => {
         const k = kontakte[m.name] || {};
-        const body = `Hallo ${m.name.split(" ")[0]},\n\nfolgende Maßnahme wurde für Sie festgelegt:\n\n${m.massnahme}\n\nBitte bestätigen Sie die Umsetzung.\n\nMit freundlichen Grüßen\nFiberNC Leitstelle`;
+        const body = m.status === "gut"
+          ? `Hallo ${m.name.split(" ")[0]},\n\nwir möchten Ihnen ein herzliches Lob für Ihre hervorragenden KPI-Werte aussprechen!\n\n${m.massnahme}\n\nWeiter so — Sie sind ein wertvoller Teil unseres Teams!\n\nMit freundlichen Grüßen\nFiberNC Leitstelle`
+          : `Hallo ${m.name.split(" ")[0]},\n\nfolgende Maßnahme wurde für Sie festgelegt:\n\n${m.massnahme}\n\nBitte bestätigen Sie die Umsetzung.\n\nMit freundlichen Grüßen\nFiberNC Leitstelle`;
         const mailto = `mailto:${k.email || ""}?subject=${encodeURIComponent(m.betreff || "KPI Maßnahme")}&body=${encodeURIComponent(body)}`;
         const waLink = k.mobil ? `https://wa.me/${k.mobil.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(m.massnahme)}` : null;
         return (
