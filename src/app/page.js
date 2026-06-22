@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef } from "react";
+import * as XLSX from "xlsx";
 
 const BASELINE = { cc_rate: 97.6, termintreue: 97.7, loesungsquote: 96.0, nps: 69.9 };
 const BASELINE_FS5335 = { cc_rate: 99.6, termintreue: 99.1, loesungsquote: 96.9, nps: 74.4 };
@@ -338,7 +339,6 @@ export default function KPIAgent() {
 
   const processXLSX = useCallback(async (file) => {
     try {
-      const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm');
       const buffer = await file.arrayBuffer();
       const wb = XLSX.read(buffer, { type: "array" });
       const ws = wb.Sheets[wb.SheetNames[0]];
