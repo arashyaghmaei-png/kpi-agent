@@ -321,6 +321,7 @@ function FormatBadge({ format }) {
 
 export default function KPIAgent() {
   const [techniker, setTechniker] = useState([]);
+  const [pendingTechniker, setPendingTechniker] = useState(null);
   const [aiAnalysis, setAiAnalysis] = useState("");
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -332,7 +333,6 @@ export default function KPIAgent() {
   const [showSessions, setShowSessions] = useState(false);
   const dashboardRef = useRef(null);
 
-  // Beim Start gespeicherte Sessions laden
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -340,37 +340,55 @@ export default function KPIAgent() {
     } catch(e) {}
   }, []);
 
-  // Sessions speichern wenn sie sich ändern
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
     } catch(e) {}
   }, [sessions]);
 
+  // Wenn Analyse fertig ist und neue Datei wartet → automatisch laden
+  useEffect(() => {
+    if (!loading && pendingTechniker) {
+      setTechniker(pendingTechniker.rows);
+      setDetectedFormat(pendingTechniker.format);
+      setFileName(pendingTechniker.name);
+      setAiAnalysis("");
+      setActiveTab("dashboard");
+      setPendingTechniker(null);
+    }
+  }, [loading, pendingTechniker]);
+
+  const saveSession = (rows, name, fmt) => {
+    const session = {
+      id: Date.now(),
+      name,
+      format: fmt,
+      datum: new Date().toLocaleDateString("de-DE"),
+      uhrzeit: new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }),
+      techniker: rows,
+    };
+    setSessions(prev => [session, ...prev.slice(0, 19)]);
+  };
+
   const handleRows = useCallback((rows, name, skipSave) => {
     if (!rows.length) { setError("Keine verwertbaren Daten gefunden."); return; }
     const formats = [...new Set(rows.map(r => r.quelle))];
     const fmt = formats.length === 1 ? formats[0] : "mixed";
-    setDetectedFormat(fmt);
-    setTechniker(rows);
-    setAiAnalysis("");
-    setFileName(name);
-    setError("");
-    setActiveTab("dashboard");
+    if (!skipSave) saveSession(rows, name, fmt);
 
-    // Session speichern
-    if (!skipSave) {
-      const session = {
-        id: Date.now(),
-        name,
-        format: fmt,
-        datum: new Date().toLocaleDateString("de-DE"),
-        uhrzeit: new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }),
-        techniker: rows,
-      };
-      setSessions(prev => [session, ...prev.slice(0, 19)]); // max 20 Sessions
+    if (loading) {
+      // KI läuft noch → in Warteschlange
+      setPendingTechniker({ rows, name, format: fmt });
+      setError("✓ Datei gespeichert — wird nach der Analyse geladen");
+    } else {
+      setDetectedFormat(fmt);
+      setTechniker(rows);
+      setAiAnalysis("");
+      setFileName(name);
+      setError("");
+      setActiveTab("dashboard");
     }
-  }, []);
+  }, [loading]);
 
   const loadSession = (session) => {
     handleRows(session.techniker, session.name, true);
@@ -396,6 +414,7 @@ export default function KPIAgent() {
   const handleFile = useCallback((e) => {
     const file = e.target.files[0];
     if (!file) return;
+    e.target.value = "";
     if (file.name.match(/\.xlsx?$/i)) { processXLSX(file); }
     else {
       const reader = new FileReader();
@@ -458,25 +477,27 @@ export default function KPIAgent() {
 
   return (
     <div style={{ background: "#0a0e1a", minHeight: "100vh", fontFamily: "system-ui, sans-serif", color: "#e5e7eb" }}>
-      {/* Header */}
       <div style={{ borderBottom: "1px solid #1f2937", padding: "14px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#4ade80", boxShadow: "0 0 6px #4ade80" }} />
-          {/* KPI Agent Button — klickbar zum Aktualisieren */}
           <button onClick={() => window.location.reload()} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: 2, color: "#9ca3af", textTransform: "uppercase" }}>KPI Agent</span>
-            <span style={{ fontSize: 10, color: "#374151" }}>↻</span>
+            <span style={{ fontSize: 10, color: "#4b5563" }}>↻</span>
           </button>
           <span style={{ color: "#374151" }}>·</span>
           <span style={{ fontSize: 12, color: "#6b7280" }}>Techniker-Kontrolle FiberNC</span>
           {detectedFormat ? <FormatBadge format={detectedFormat} /> : null}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {/* Sessions Button */}
+          {/* Immer sichtbar: Datei hochladen während Analyse läuft */}
+          <label style={{ background: loading ? "#1a2e1a" : "#1f2937", color: loading ? "#4ade80" : "#9ca3af", border: `1px solid ${loading ? "#14532d" : "#374151"}`, padding: "6px 14px", borderRadius: 6, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
+            {loading ? "⏳ Nächste Datei" : "📂 Datei"}
+            <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} style={{ display: "none" }} />
+          </label>
           <div style={{ position: "relative" }}>
             <button onClick={() => setShowSessions(!showSessions)}
               style={{ background: "#1f2937", color: sessions.length > 0 ? "#60a5fa" : "#6b7280", border: "1px solid #374151", padding: "6px 14px", borderRadius: 6, cursor: "pointer", fontSize: 12 }}>
-              📂 Verlauf {sessions.length > 0 ? `(${sessions.length})` : ""}
+              🗂 Verlauf {sessions.length > 0 ? `(${sessions.length})` : ""}
             </button>
             {showSessions && (
               <div style={{ position: "absolute", right: 0, top: 36, width: 320, background: "#111827", border: "1px solid #1f2937", borderRadius: 8, zIndex: 100, maxHeight: 400, overflowY: "auto" }}>
@@ -493,7 +514,7 @@ export default function KPIAgent() {
                     onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                     <div>
                       <div style={{ fontSize: 12, color: "#f9fafb", fontWeight: 600 }}>{s.name}</div>
-                      <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>{s.datum} {s.uhrzeit} · {s.techniker.length} Techniker · <FormatBadge format={s.format} /></div>
+                      <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>{s.datum} {s.uhrzeit} · {s.techniker.length} Techniker</div>
                     </div>
                     <button onClick={(e) => deleteSession(s.id, e)} style={{ background: "none", border: "none", color: "#4b5563", cursor: "pointer", fontSize: 14, padding: "0 4px" }}>✕</button>
                   </div>
@@ -521,9 +542,9 @@ export default function KPIAgent() {
               <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} style={{ display: "none" }} />
             </label>
             <button onClick={loadExample} style={{ background: "#1f2937", color: "#9ca3af", border: "1px solid #374151", padding: "10px 24px", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Beispieldaten</button>
-            {error && <div style={{ marginTop: 16, color: "#f87171", fontSize: 13 }}>{error}</div>}
+            {error && <div style={{ marginTop: 16, color: "#4ade80", fontSize: 13 }}>{error}</div>}
             {sessions.length > 0 && (
-              <div style={{ marginTop: 32, textAlign: "left", maxWidth: 400, margin: "32px auto 0" }}>
+              <div style={{ marginTop: 32, maxWidth: 400, margin: "32px auto 0" }}>
                 <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 12, textAlign: "center" }}>— oder letzte Auswertung laden —</div>
                 {sessions.slice(0, 3).map(s => (
                   <div key={s.id} onClick={() => loadSession(s)}
@@ -541,7 +562,10 @@ export default function KPIAgent() {
 
         {techniker.length > 0 && (
           <>
-            {fileName ? <div style={{ fontSize: 11, color: "#4b5563", marginBottom: 12, fontFamily: "monospace" }}>📂 {fileName} · {techniker.length} Techniker</div> : null}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              {fileName ? <div style={{ fontSize: 11, color: "#4b5563", fontFamily: "monospace" }}>📂 {fileName} · {techniker.length} Techniker</div> : null}
+              {pendingTechniker ? <div style={{ fontSize: 11, color: "#4ade80" }}>⏳ Nächste Datei bereit: {pendingTechniker.name}</div> : null}
+            </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 20 }}>
               {(isOTView ? [
                 { label: "Techniker", value: techniker.length, color: "#60a5fa" },
@@ -574,9 +598,9 @@ export default function KPIAgent() {
               <>
                 <div style={{ marginBottom: 16 }}>{techniker.map((t, i) => <TechCard key={i} tech={t} />)}</div>
                 <button onClick={runAnalysis} disabled={loading} style={{ width: "100%", background: loading ? "#1f2937" : "#1d4ed8", color: loading ? "#6b7280" : "#fff", border: "none", borderRadius: 8, padding: "14px", fontSize: 14, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer" }}>
-                  {loading ? "KI analysiert..." : "🤖 KI-Analyse starten"}
+                  {loading ? "⏳ KI analysiert... (neue Datei kann oben hochgeladen werden)" : "🤖 KI-Analyse starten"}
                 </button>
-                <button onClick={() => { setTechniker([]); setAiAnalysis(""); setFileName(""); setError(""); setDetectedFormat(null); }}
+                <button onClick={() => { setTechniker([]); setAiAnalysis(""); setFileName(""); setError(""); setDetectedFormat(null); setPendingTechniker(null); }}
                   style={{ width: "100%", marginTop: 8, background: "none", color: "#4b5563", border: "1px solid #1f2937", borderRadius: 8, padding: "10px", fontSize: 12, cursor: "pointer" }}>
                   Neue Datei laden
                 </button>
@@ -586,7 +610,7 @@ export default function KPIAgent() {
             {activeTab === "analyse" && (
               <div>
                 {!aiAnalysis && !loading ? <div style={{ textAlign: "center", padding: "40px", color: "#6b7280" }}>Noch keine Analyse. Dashboard öffnen und starten.</div> : null}
-                {loading ? <div style={{ textAlign: "center", padding: "40px", color: "#6b7280" }}>KI analysiert...</div> : null}
+                {loading ? <div style={{ textAlign: "center", padding: "40px", color: "#6b7280" }}>⏳ KI analysiert...</div> : null}
                 {aiAnalysis ? <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8, padding: "20px", fontSize: 13, lineHeight: 1.8, color: "#d1d5db" }} dangerouslySetInnerHTML={{ __html: renderMarkdown(aiAnalysis) }} /> : null}
                 {error && <div style={{ background: "#2e0f0f", border: "1px solid #7f1d1d", borderRadius: 8, padding: 16, color: "#f87171", fontSize: 13 }}>{error}</div>}
               </div>
