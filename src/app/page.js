@@ -317,7 +317,6 @@ function renderMarkdown(text) {
 }
 
 export default function KPIAgent() {
-  // Gespeicherte Daten pro Kategorie: { smsfeedback: [...], nftq: [...], ... }
   const [gespeichert, setGespeichert] = useState({});
   const [aktiveKategorie, setAktiveKategorie] = useState("alle");
   const [aiAnalysis, setAiAnalysis] = useState("");
@@ -325,11 +324,9 @@ export default function KPIAgent() {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [showVerlauf, setShowVerlauf] = useState(false);
-  const [pendingRows, setPendingRows] = useState(null);
+  const [pending, setPending] = useState(null);
   const dashboardRef = useRef(null);
 
-  // Beim Start laden
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -337,34 +334,30 @@ export default function KPIAgent() {
     } catch(e) {}
   }, []);
 
-  // Speichern wenn sich Daten ändern
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(gespeichert));
     } catch(e) {}
   }, [gespeichert]);
 
-  // Nach Analyse: pending laden
   useEffect(() => {
-    if (!loading && pendingRows) {
-      const { rows, quelle } = pendingRows;
-      setGespeichert(prev => ({ ...prev, [quelle]: rows }));
-      setAktiveKategorie(quelle);
+    if (!loading && pending) {
+      setGespeichert(prev => ({ ...prev, [pending.quelle]: pending.rows }));
+      setAktiveKategorie(pending.quelle);
       setAiAnalysis("");
       setActiveTab("dashboard");
-      setPendingRows(null);
+      setPending(null);
       setError("");
     }
-  }, [loading, pendingRows]);
+  }, [loading, pending]);
 
   const handleRows = useCallback((rows) => {
-    if (!rows.length) { setError("Keine verwertbaren Daten gefunden."); return; }
+    if (!rows.length) { setError("Keine Daten gefunden."); return; }
     const quellen = [...new Set(rows.map(r => r.quelle))];
     const quelle = quellen.length === 1 ? quellen[0] : "standard";
-
     if (loading) {
-      setPendingRows({ rows, quelle });
-      setError("✓ Datei gespeichert — wird nach der Analyse geladen");
+      setPending({ rows, quelle });
+      setError("✓ Gespeichert — wird nach Analyse geladen");
     } else {
       setGespeichert(prev => ({ ...prev, [quelle]: rows }));
       setAktiveKategorie(quelle);
@@ -379,8 +372,7 @@ export default function KPIAgent() {
       const buffer = await file.arrayBuffer();
       const wb = XLSX.read(buffer, { type: "array" });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rawRows = XLSX.utils.sheet_to_json(ws, { defval: "" });
-      handleRows(normalizeRows(rawRows));
+      handleRows(normalizeRows(XLSX.utils.sheet_to_json(ws, { defval: "" })));
     } catch (e) { setError("Fehler: " + e.message); }
   }, [handleRows]);
 
@@ -396,10 +388,11 @@ export default function KPIAgent() {
     }
   }, [processXLSX, handleRows]);
 
-  // Aktuell angezeigte Techniker basierend auf aktiver Kategorie
   const angezeigt = aktiveKategorie === "alle"
     ? Object.values(gespeichert).flat()
     : (gespeichert[aktiveKategorie] || []);
+
+  const hatDaten = Object.keys(gespeichert).length > 0;
 
   const runAnalysis = async () => {
     if (!angezeigt.length) return;
@@ -455,34 +448,32 @@ export default function KPIAgent() {
   };
 
   const isOTView = aktiveKategorie === "onetouch";
-  const hatDaten = Object.keys(gespeichert).length > 0;
 
   return (
     <div style={{ background: "#0a0e1a", minHeight: "100vh", fontFamily: "system-ui, sans-serif", color: "#e5e7eb" }}>
 
       {/* Header */}
       <div style={{ borderBottom: "1px solid #1f2937", padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#4ade80", boxShadow: "0 0 6px #4ade80" }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#4ade80", boxShadow: "0 0 6px #4ade80", flexShrink: 0 }} />
           <button onClick={() => window.location.reload()} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
             <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: 2, color: "#9ca3af", textTransform: "uppercase" }}>KPI Agent ↻</span>
           </button>
           <span style={{ color: "#374151" }}>·</span>
-
-          {/* Kategorie-Tabs */}
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
             {KATEGORIEN.map(k => {
-              const anzahl = k.id === "alle" ? Object.values(gespeichert).flat().length : (gespeichert[k.id] || []).length;
+              const anzahl = k.id === "alle"
+                ? Object.values(gespeichert).flat().length
+                : (gespeichert[k.id] || []).length;
               const aktiv = aktiveKategorie === k.id;
               const hatDatenInKat = k.id === "alle" ? hatDaten : anzahl > 0;
               return (
-                <button key={k.id} onClick={() => setAktiveKategorie(k.id)}
-                  style={{
-                    background: aktiv ? "#1d4ed8" : hatDatenInKat ? "#111827" : "transparent",
-                    color: aktiv ? "#fff" : hatDatenInKat ? "#60a5fa" : "#374151",
-                    border: `1px solid ${aktiv ? "#1d4ed8" : hatDatenInKat ? "#1e3a5f" : "#1f2937"}`,
-                    padding: "3px 10px", borderRadius: 5, cursor: "pointer", fontSize: 11, fontWeight: aktiv ? 700 : 400,
-                  }}>
+                <button key={k.id} onClick={() => setAktiveKategorie(k.id)} style={{
+                  background: aktiv ? "#1d4ed8" : hatDatenInKat ? "#111827" : "transparent",
+                  color: aktiv ? "#fff" : hatDatenInKat ? "#60a5fa" : "#374151",
+                  border: `1px solid ${aktiv ? "#1d4ed8" : hatDatenInKat ? "#1e3a5f" : "#1f2937"}`,
+                  padding: "3px 10px", borderRadius: 5, cursor: "pointer", fontSize: 11, fontWeight: aktiv ? 700 : 400,
+                }}>
                   {k.label}{hatDatenInKat && anzahl > 0 ? ` (${anzahl})` : ""}
                 </button>
               );
@@ -490,7 +481,6 @@ export default function KPIAgent() {
           </div>
         </div>
 
-        {/* Rechts: Upload + Verlauf + PDF */}
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <label style={{ background: loading ? "#1a2e1a" : "#1f2937", color: loading ? "#4ade80" : "#9ca3af", border: `1px solid ${loading ? "#14532d" : "#374151"}`, padding: "6px 14px", borderRadius: 6, cursor: "pointer", fontSize: 12 }}>
             {loading ? "⏳ Nächste" : "📂 Upload"}
@@ -500,20 +490,18 @@ export default function KPIAgent() {
             <button onClick={exportPDF} disabled={exporting} style={{ background: "#1f2937", color: "#9ca3af", border: "1px solid #374151", padding: "6px 14px", borderRadius: 6, cursor: "pointer", fontSize: 12 }}>📄 PDF</button>
           ) : null}
           {aktiveKategorie !== "alle" && gespeichert[aktiveKategorie] ? (
-            <button onClick={() => loescheKategorie(aktiveKategorie)} style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", padding: "6px 10px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>✕ Löschen</button>
+            <button onClick={() => loescheKategorie(aktiveKategorie)} style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", padding: "6px 10px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>✕</button>
           ) : null}
-          <span style={{ fontSize: 11, color: "#374151", fontFamily: "monospace" }}>KW13–19</span>
         </div>
       </div>
 
       <div ref={dashboardRef} style={{ maxWidth: 720, margin: "0 auto", padding: "24px 20px" }}>
 
-        {/* Leer-Zustand */}
         {!hatDaten && (
           <div style={{ textAlign: "center", padding: "60px 20px" }}>
             <div style={{ fontSize: 36, marginBottom: 12 }}>📁</div>
             <div style={{ fontSize: 18, fontWeight: 700, color: "#f9fafb", marginBottom: 8 }}>Telekom-Export hochladen</div>
-            <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 24 }}>Wird automatisch der richtigen Kategorie zugeordnet</div>
+            <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 24 }}>Wird automatisch der richtigen Kategorie zugeordnet und gespeichert</div>
             <label style={{ display: "inline-block", background: "#1d4ed8", color: "#fff", padding: "10px 24px", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
               📂 Datei wählen (.csv / .xlsx)
               <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} style={{ display: "none" }} />
@@ -522,23 +510,23 @@ export default function KPIAgent() {
           </div>
         )}
 
-        {/* Aktive Kategorie leer aber andere haben Daten */}
         {hatDaten && angezeigt.length === 0 && (
           <div style={{ textAlign: "center", padding: "40px 20px" }}>
-            <div style={{ fontSize: 14, color: "#6b7280", marginBottom: 16 }}>Noch keine Daten für "{KATEGORIEN.find(k => k.id === aktiveKategorie)?.label}"</div>
+            <div style={{ fontSize: 14, color: "#6b7280", marginBottom: 16 }}>
+              Noch keine Daten für "{KATEGORIEN.find(k => k.id === aktiveKategorie)?.label}"
+            </div>
             <label style={{ display: "inline-block", background: "#1d4ed8", color: "#fff", padding: "10px 24px", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
-              📂 {KATEGORIEN.find(k => k.id === aktiveKategorie)?.label}-Export hochladen
+              📂 Export hochladen
               <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} style={{ display: "none" }} />
             </label>
           </div>
         )}
 
-        {/* Dashboard */}
         {angezeigt.length > 0 && (
           <>
-            {pendingTechniker ? <div style={{ fontSize: 11, color: "#4ade80", marginBottom: 8 }}>⏳ Nächste Datei bereit</div> : null}
+            {pending ? <div style={{ fontSize: 11, color: "#4ade80", marginBottom: 8 }}>⏳ Nächste Datei bereit: {pending.quelle}</div> : null}
+            {error ? <div style={{ fontSize: 11, color: "#4ade80", marginBottom: 8 }}>{error}</div> : null}
 
-            {/* Stats */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 20 }}>
               {(isOTView ? [
                 { label: "Techniker", value: angezeigt.length, color: "#60a5fa" },
@@ -558,7 +546,6 @@ export default function KPIAgent() {
               ))}
             </div>
 
-            {/* Tabs */}
             <div style={{ display: "flex", marginBottom: 16, borderBottom: "1px solid #1f2937" }}>
               {[{ id: "dashboard", label: "Dashboard" }, { id: "analyse", label: "KI-Analyse" + (aiAnalysis ? " ✓" : "") }].map(tab => (
                 <button key={tab.id} onClick={() => setActiveTab(tab.id)}
@@ -583,7 +570,6 @@ export default function KPIAgent() {
                 {!aiAnalysis && !loading ? <div style={{ textAlign: "center", padding: "40px", color: "#6b7280" }}>Noch keine Analyse. Dashboard öffnen und starten.</div> : null}
                 {loading ? <div style={{ textAlign: "center", padding: "40px", color: "#6b7280" }}>⏳ KI analysiert...</div> : null}
                 {aiAnalysis ? <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8, padding: "20px", fontSize: 13, lineHeight: 1.8, color: "#d1d5db" }} dangerouslySetInnerHTML={{ __html: renderMarkdown(aiAnalysis) }} /> : null}
-                {error ? <div style={{ background: "#2e0f0f", border: "1px solid #7f1d1d", borderRadius: 8, padding: 16, color: "#f87171", fontSize: 13 }}>{error}</div> : null}
               </div>
             )}
           </>
