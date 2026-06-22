@@ -864,8 +864,25 @@ export default function KPIAgent() {
         setMassnahmen(alleMassnahmen);
         setMassnahmenFehler(null);
       } catch(e2) {
-        const { massnahmen: parsed, fehler } = parseMassnahmen(text);
-        setMassnahmen(parsed); setMassnahmenFehler(fehler);
+        // Zweiter API-Call fehlgeschlagen - direkt aus angezeigt generieren
+        const autoMassnahmen = angezeigt.map(t => {
+          const bl = String(t.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
+          const statuses = [
+            t.cc_rate !== null ? getStatus(t.cc_rate, bl.cc_rate) : null,
+            t.termintreue !== null ? getStatus(t.termintreue, bl.termintreue) : null,
+            t.nps !== null ? getNPSStatus(t.nps) : null,
+            t.a1 !== null ? (t.a1 >= 60 ? "gut" : t.a1 >= 45 ? "warnung" : "kritisch") : null,
+          ].filter(Boolean);
+          const worst = statuses.includes("kritisch") ? "kritisch" : statuses.includes("warnung") ? "warnung" : "gut";
+          return {
+            name: t.name,
+            status: worst,
+            massnahme: worst === "gut" ? "Hervorragende Leistung! Alle KPI-Werte im grünen Bereich — weiter so!" : "KPI-Werte prüfen und Verbesserungsmaßnahmen einleiten.",
+            betreff: worst === "gut" ? "Lob: Sehr gute KPI-Leistung" : "KPI Maßnahme"
+          };
+        });
+        setMassnahmen(autoMassnahmen);
+        setMassnahmenFehler(null);
       }
 
       setActiveTab("analyse");
