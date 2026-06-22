@@ -1026,4 +1026,68 @@ export default function KPIAgent() {
                 { label: "Avg Score", value: teamAvgScore() + "/10", color: scoreColor(parseFloat(teamAvgScore())) },
               ] : [
                 { label: "Techniker", value: angezeigt.length, color: "#60a5fa" },
-                { label: "Kritisch", value: criticalCou
+                { label: "Kritisch", value: criticalCount, color: criticalCount > 0 ? "#f87171" : "#4ade80" },
+                { label: "Avg CC-Rate", value: avg("cc_rate") !== "-" ? avg("cc_rate") + "%" : "-", color: "#fbbf24" },
+                { label: "Avg Score", value: teamAvgScore() + "/10", color: scoreColor(parseFloat(teamAvgScore())) },
+              ]).map(s => (
+                <div key={s.label} style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8, padding: "12px 14px" }}>
+                  <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 4 }}>{s.label}</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: s.color, fontFamily: "monospace" }}>{s.value}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", marginBottom: 16, borderBottom: "1px solid #1f2937" }}>
+              {[
+                { id: "dashboard", label: "Dashboard" },
+                { id: "firmendashboard", label: `🏢 Firmendashboard${Object.keys(techBewertungen).length > 0 ? ` (${Object.keys(techBewertungen).length})` : ""}` },
+                { id: "analyse", label: "KI-Analyse" + (aiAnalysis ? " ✓" : "") },
+              ].map(tab => (
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                  style={{ background: "none", border: "none", borderBottom: activeTab === tab.id ? "2px solid #3b82f6" : "2px solid transparent", color: activeTab === tab.id ? "#f9fafb" : "#6b7280", padding: "8px 14px", cursor: "pointer", fontSize: 12, fontWeight: activeTab === tab.id ? 600 : 400, marginBottom: -1, whiteSpace: "nowrap" }}>
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {activeTab === "dashboard" && (
+              <>
+                <div style={{ marginBottom: 16 }}>{angezeigt.map((t, i) => <TechCard key={i} tech={t} baselines={baselines} />)}</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <button onClick={runAnalysis} disabled={loading}
+                    style={{ width: "100%", background: loading ? "#1f2937" : "#1d4ed8", color: loading ? "#6b7280" : "#fff", border: "none", borderRadius: 8, padding: "14px", fontSize: 14, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer" }}>
+                    {loading ? "⏳ KI analysiert..." : "🤖 Team-Analyse starten"}
+                  </button>
+                  <button onClick={bewerteAlle}
+                    style={{ width: "100%", background: "#0f172a", color: "#60a5fa", border: "1px solid #1e3a5f", borderRadius: 8, padding: "12px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                    🏢 Alle bewerten → Firmendashboard
+                  </button>
+                  <button onClick={archivieren}
+                    style={{ width: "100%", background: "#0f172a", color: "#6b7280", border: "1px solid #1f2937", borderRadius: 8, padding: "10px", fontSize: 12, cursor: "pointer" }}>
+                    🗂 Archivieren & Dashboard leeren
+                  </button>
+                </div>
+              </>
+            )}
+
+            {activeTab === "firmendashboard" && <FirmendashboardTab />}
+
+            {activeTab === "analyse" && (
+              <div>
+                {!aiAnalysis && !loading && <div style={{ textAlign: "center", padding: "40px", color: "#6b7280" }}>Noch keine Analyse. Dashboard öffnen und starten.</div>}
+                {loading && <div style={{ textAlign: "center", padding: "40px", color: "#6b7280" }}>⏳ KI analysiert...</div>}
+                {aiAnalysis && (
+                  <>
+                    <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8, padding: "20px", fontSize: 13, lineHeight: 1.8, color: "#d1d5db" }}
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(aiAnalysis) }} />
+                    <MassnahmenPanel massnahmen={massnahmen} parseError={massnahmenFehler} kontakte={kontakte} />
+                  </>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
