@@ -5,9 +5,12 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
-const BASELINE = { cc_rate: 97.6, termintreue: 97.7, loesungsquote: 96.0, nps: 69.9 };
-const BASELINE_FS5335 = { cc_rate: 99.6, termintreue: 99.1, loesungsquote: 96.9, nps: 74.4 };
-const BASELINE_FS5336 = { cc_rate: 95.7, termintreue: 96.7, loesungsquote: 97.2, nps: 66.7 };
+const BASELINE_KEY = "fibernc_baselines";
+const DEFAULT_BASELINES = {
+  gesamt: { cc_rate: 97.6, termintreue: 97.7, loesungsquote: 96.0, nps: 69.9 },
+  fs5335: { cc_rate: 99.6, termintreue: 99.1, loesungsquote: 96.9, nps: 74.4 },
+  fs5336: { cc_rate: 95.7, termintreue: 96.7, loesungsquote: 97.2, nps: 66.7 },
+};
 const OT_BASELINE = { a_ges: 95.0, a1: 60.0 };
 const STORAGE_KEY = "fibernc_kpi_v2";
 const KONTAKTE_KEY = "fibernc_kontakte";
@@ -21,10 +24,10 @@ const KATEGORIEN = [
   { id: "standard", label: "Manuell" },
 ];
 
-const SYSTEM_PROMPT = `Du bist ein operativer KPI-Analyseagent für ein Telekommunikations-Subunternehmen (Telekom-Subunternehmer, Kupfer & FTTH, Bergheim NRW).
-Baseline KW13-19: CC=${BASELINE.cc_rate}% | Termintreue=${BASELINE.termintreue}% | Lösungsquote=${BASELINE.loesungsquote}%
-FS5335: CC=${BASELINE_FS5335.cc_rate}% | Termintreue=${BASELINE_FS5335.termintreue}% | Lösungsquote=${BASELINE_FS5335.loesungsquote}%
-FS5336: CC=${BASELINE_FS5336.cc_rate}% | Termintreue=${BASELINE_FS5336.termintreue}% | Lösungsquote=${BASELINE_FS5336.loesungsquote}%
+const SYSTEM_PROMPT_FN = (bl) => `Du bist ein operativer KPI-Analyseagent für ein Telekommunikations-Subunternehmen (Telekom-Subunternehmer, Kupfer & FTTH, Bergheim NRW).
+Baseline KW13-19: CC=${bl.gesamt.cc_rate}% | Termintreue=${bl.gesamt.termintreue}% | Lösungsquote=${bl.gesamt.loesungsquote}%
+FS5335: CC=${bl.fs5335.cc_rate}% | Termintreue=${bl.fs5335.termintreue}% | Lösungsquote=${bl.fs5335.loesungsquote}%
+FS5336: CC=${bl.fs5336.cc_rate}% | Termintreue=${bl.fs5336.termintreue}% | Lösungsquote=${bl.fs5336.loesungsquote}%
 KW20 schlechteste Woche (NPS 26, Termintreue 85,7%). KW23-24 FS5336 kritisch: CC 70%, SearchCall 37%.
 OneTouch: A1=erster Besuch erledigt (Ziel >=60%), AX=Abbruch, A0=nicht erledigt (kritisch >10%).
 Aufgabe: Techniker-KPIs bewerten, Frühwarnungen bei >=7% Abweichung, Leitstellen-Empfehlungen.
@@ -162,7 +165,6 @@ function parseCSV(text) {
   return normalizeRows(rows);
 }
 
-// FIX 1: NPS eigene Skala
 function getNPSStatus(nps) {
   if (nps === null || nps === undefined || isNaN(nps)) return null;
   if (nps < 0) return "kritisch";
@@ -187,7 +189,6 @@ function getOTStatus(tech) {
   return "gut";
 }
 
-// FIX 4: Maßnahmen-Parsing mit Fehlerbehandlung
 function parseMassnahmen(text) {
   try {
     const match = text.match(/<MASSNAHMEN>([\s\S]*?)<\/MASSNAHMEN>/);
@@ -263,10 +264,10 @@ function OTStackedBar({ tech }) {
   );
 }
 
-function TechCard({ tech }) {
+function TechCard({ tech, baselines }) {
   const isNFTQ = tech.quelle === "nftq";
   const isOT = tech.quelle === "onetouch";
-  const bl = String(tech.standort) === "5336" ? BASELINE_FS5336 : BASELINE_FS5335;
+  const bl = String(tech.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
   let worst = "gut";
   if (isOT) worst = getOTStatus(tech);
   else if (isNFTQ) {
@@ -285,16 +286,13 @@ function TechCard({ tech }) {
   const quelleLabel = { smsfeedback: "SMS-Feedback", smsfeedbackschalten: "Schalten", nftq: "NFTQ", standard: "Manuell", onetouch: "OneTouch" }[tech.quelle] || "";
   const npsStatus = tech.nps !== null ? getNPSStatus(tech.nps) : null;
   const npsColor = npsStatus === "kritisch" ? "#f87171" : npsStatus === "warnung" ? "#fbbf24" : "#4ade80";
-
   return (
     <div style={{ background: "#111827", border: `1px solid ${borderColor}`, borderRadius: 8, padding: "16px 18px", marginBottom: 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <div>
           <div style={{ fontWeight: 700, fontSize: 15, color: "#f9fafb" }}>{tech.name}</div>
           <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>
-            {tech.standortUnbekannt
-              ? <span style={{ color: "#fbbf24" }}>⚠ Standort unbekannt → FS5335</span>
-              : `FS${tech.standort}`}
+            {tech.standortUnbekannt ? <span style={{ color: "#fbbf24" }}>⚠ Standort unbekannt → FS5335</span> : `FS${tech.standort}`}
             {" · "}{tech.auftraege} Aufträge
             {isOT && tech.tage ? <span style={{ marginLeft: 6 }}>· {tech.tage} Tage</span> : null}
             <span style={{ marginLeft: 8, color: "#374151", background: "#1f2937", padding: "1px 6px", borderRadius: 3 }}>{quelleLabel}</span>
@@ -328,7 +326,7 @@ function TechCard({ tech }) {
             <span style={{ background: STATUS_STYLE[npsStatus]?.bg, color: npsColor, padding: "1px 6px", borderRadius: 3, fontSize: 10, fontFamily: "monospace", fontWeight: 700 }}>
               {npsStatus === "kritisch" ? "KRITISCH" : npsStatus === "warnung" ? "WARNUNG" : "GUT"}
             </span>
-            <span style={{ fontSize: 10, color: "#4b5563" }}>Basis: {String(tech.standort) === "5336" ? BASELINE_FS5336.nps : BASELINE_FS5335.nps}</span>
+            <span style={{ fontSize: 10, color: "#4b5563" }}>Basis: {String(tech.standort) === "5336" ? baselines.fs5336.nps : baselines.fs5335.nps}</span>
           </div>
         ) : null}
       </>)}
@@ -385,6 +383,101 @@ function MassnahmenPanel({ massnahmen, parseError, kontakte }) {
   );
 }
 
+function AddKPIRow({ onAdd }) {
+  const [name, setName] = useState("");
+  const [val, setVal] = useState("");
+  const inputStyle = { background: "#1f2937", border: "1px solid #374151", borderRadius: 5, padding: "4px 7px", color: "#e5e7eb", fontSize: 11 };
+  return (
+    <div style={{ display: "flex", gap: 6, marginTop: 10, alignItems: "center" }}>
+      <input value={name} onChange={e => setName(e.target.value)} placeholder="KPI-Name z.B. cc_rate" style={{ ...inputStyle, flex: 1 }} />
+      <input value={val} onChange={e => setVal(e.target.value)} placeholder="Wert" type="number" style={{ ...inputStyle, width: 70 }} />
+      <button onClick={() => { if (name && val) { onAdd(name.trim(), parseFloat(val)); setName(""); setVal(""); } }}
+        style={{ background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 5, cursor: "pointer", fontSize: 13, padding: "4px 10px", fontWeight: 700 }}>+</button>
+    </div>
+  );
+}
+
+function BaselineEditor({ baselines, onSave, onClose }) {
+  const [local, setLocal] = useState(JSON.parse(JSON.stringify(baselines)));
+  const kpiLabels = { cc_rate: "CC-Rate %", termintreue: "Termintreue %", loesungsquote: "Lösungsquote %", nps: "NPS" };
+  const standortLabels = { gesamt: "Gesamt (KW13-19)", fs5335: "FS5335", fs5336: "FS5336" };
+  const inputStyle = { background: "#1f2937", border: "1px solid #374151", borderRadius: 5, padding: "5px 8px", color: "#e5e7eb", fontSize: 12, width: "80px", textAlign: "right" };
+  const update = (standort, kpi, val) => setLocal(prev => ({ ...prev, [standort]: { ...prev[standort], [kpi]: parseFloat(val) || 0 } }));
+  const delKPI = (standort, kpi) => setLocal(prev => { const n = { ...prev, [standort]: { ...prev[standort] } }; delete n[standort][kpi]; return n; });
+  const reset = () => setLocal(JSON.parse(JSON.stringify(DEFAULT_BASELINES)));
+  return (
+    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.85)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 12, padding: 24, width: 620, maxHeight: "85vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <span style={{ fontWeight: 700, fontSize: 15, color: "#f9fafb" }}>📊 Baseline-Werte verwalten</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 18 }}>✕</button>
+        </div>
+        {Object.entries(standortLabels).map(([standort, standortName]) => (
+          <div key={standort} style={{ marginBottom: 16, background: "#0f172a", border: "1px solid #1f2937", borderRadius: 8, padding: "14px 16px" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#60a5fa", marginBottom: 12, textTransform: "uppercase", letterSpacing: 1 }}>{standortName}</div>
+            {Object.entries(local[standort] || {}).map(([kpi, wert]) => (
+              <div key={kpi} style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 8, alignItems: "center", marginBottom: 8 }}>
+                <div style={{ fontSize: 12, color: "#9ca3af" }}>{kpiLabels[kpi] || kpi}</div>
+                <input type="number" step="0.1" value={wert} onChange={e => update(standort, kpi, e.target.value)} style={inputStyle} />
+                <button onClick={() => delKPI(standort, kpi)} style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", borderRadius: 4, cursor: "pointer", fontSize: 11, padding: "3px 8px" }}>✕</button>
+              </div>
+            ))}
+            <AddKPIRow onAdd={(kpi, val) => setLocal(prev => ({ ...prev, [standort]: { ...prev[standort], [kpi]: val } }))} />
+          </div>
+        ))}
+        <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+          <button onClick={reset} style={{ flex: 1, background: "#1f2937", color: "#9ca3af", border: "1px solid #374151", borderRadius: 8, padding: "10px", fontSize: 12, cursor: "pointer" }}>🔄 Standard</button>
+          <button onClick={() => { onSave(local); onClose(); }} style={{ flex: 2, background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 8, padding: "10px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>💾 Speichern</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TechnikerVerwaltung({ gespeichert, onUpdate, onClose }) {
+  const [local, setLocal] = useState(JSON.parse(JSON.stringify(gespeichert)));
+  const kategorieLabels = { smsfeedback: "SMS-Feedback", smsfeedbackschalten: "Schalten", nftq: "NFTQ", standard: "Manuell", onetouch: "OneTouch" };
+  const loescheTech = (kat, idx) => {
+    setLocal(prev => {
+      const n = { ...prev, [kat]: prev[kat].filter((_, i) => i !== idx) };
+      if (!n[kat].length) delete n[kat];
+      return n;
+    });
+  };
+  return (
+    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.85)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 12, padding: 24, width: 660, maxHeight: "88vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <span style={{ fontWeight: 700, fontSize: 15, color: "#f9fafb" }}>🧑‍🔧 Techniker-Einträge verwalten</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 18 }}>✕</button>
+        </div>
+        {Object.keys(local).length === 0 && <div style={{ textAlign: "center", padding: "30px", color: "#6b7280" }}>Keine Daten geladen.</div>}
+        {Object.entries(local).map(([kat, rows]) => (
+          <div key={kat} style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#60a5fa", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>
+              {kategorieLabels[kat] || kat} — {rows.length} Einträge
+            </div>
+            {rows.map((t, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#0f172a", border: "1px solid #1f2937", borderRadius: 6, padding: "8px 12px", marginBottom: 6 }}>
+                <div>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "#f9fafb" }}>{t.name}</span>
+                  <span style={{ fontSize: 11, color: "#6b7280", marginLeft: 10 }}>FS{t.standort}</span>
+                  {t.cc_rate !== null && <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 8 }}>CC {t.cc_rate?.toFixed(1)}%</span>}
+                  {t.termintreue !== null && <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 8 }}>TT {t.termintreue?.toFixed(1)}%</span>}
+                  {t.nps !== null && <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 8 }}>NPS {t.nps?.toFixed(0)}</span>}
+                  {t.a1 !== null && <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 8 }}>A1 {t.a1?.toFixed(1)}%</span>}
+                </div>
+                <button onClick={() => loescheTech(kat, i)} style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", borderRadius: 4, cursor: "pointer", fontSize: 11, padding: "3px 10px", flexShrink: 0 }}>✕ Löschen</button>
+              </div>
+            ))}
+          </div>
+        ))}
+        <button onClick={() => { onUpdate(local); onClose(); }} style={{ width: "100%", marginTop: 8, background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 8, padding: "12px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>💾 Änderungen speichern</button>
+      </div>
+    </div>
+  );
+}
+
 function KontakteEditor({ kontakte, onSave, onClose }) {
   const [local, setLocal] = useState({ ...kontakte });
   const [neuerName, setNeuerName] = useState("");
@@ -434,6 +527,9 @@ function KontakteEditor({ kontakte, onSave, onClose }) {
 export default function KPIAgent() {
   const [gespeichert, setGespeichert] = useState({});
   const [kontakte, setKontakte] = useState({});
+  const [baselines, setBaselines] = useState(() => {
+    try { const s = localStorage.getItem(BASELINE_KEY); return s ? JSON.parse(s) : DEFAULT_BASELINES; } catch(e) { return DEFAULT_BASELINES; }
+  });
   const [aktiveKategorie, setAktiveKategorie] = useState("alle");
   const [aiAnalysis, setAiAnalysis] = useState("");
   const [massnahmen, setMassnahmen] = useState([]);
@@ -444,6 +540,8 @@ export default function KPIAgent() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [pending, setPending] = useState(null);
   const [showKontakte, setShowKontakte] = useState(false);
+  const [showBaseline, setShowBaseline] = useState(false);
+  const [showTechVerwaltung, setShowTechVerwaltung] = useState(false);
   const dashboardRef = useRef(null);
 
   useEffect(() => {
@@ -455,13 +553,9 @@ export default function KPIAgent() {
     } catch(e) {}
   }, []);
 
-  useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(gespeichert)); } catch(e) {}
-  }, [gespeichert]);
-
-  useEffect(() => {
-    try { localStorage.setItem(KONTAKTE_KEY, JSON.stringify(kontakte)); } catch(e) {}
-  }, [kontakte]);
+  useEffect(() => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(gespeichert)); } catch(e) {} }, [gespeichert]);
+  useEffect(() => { try { localStorage.setItem(KONTAKTE_KEY, JSON.stringify(kontakte)); } catch(e) {} }, [kontakte]);
+  useEffect(() => { try { localStorage.setItem(BASELINE_KEY, JSON.stringify(baselines)); } catch(e) {} }, [baselines]);
 
   useEffect(() => {
     if (!loading && pending) {
@@ -537,7 +631,7 @@ export default function KPIAgent() {
       const res = await fetch("/api/analyse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, system: SYSTEM_PROMPT, messages: [{ role: "user", content: `Analysiere diese Techniker-KPIs:\n\n${dataStr}` }] }),
+        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, system: SYSTEM_PROMPT_FN(baselines), messages: [{ role: "user", content: `Analysiere diese Techniker-KPIs:\n\n${dataStr}` }] }),
       });
       const data = await res.json();
       const text = data.content?.map(b => b.text || "").join("") || "";
@@ -570,7 +664,7 @@ export default function KPIAgent() {
   const criticalCount = angezeigt.filter(t => {
     if (t.quelle === "onetouch") return getOTStatus(t) === "kritisch";
     if (t.quelle === "nftq") return [t.nftq_b, t.nftq_s, t.nftq_m, t.nftq_p].filter(Boolean).some(v => v > 10);
-    const bl = String(t.standort) === "5336" ? BASELINE_FS5336 : BASELINE_FS5335;
+    const bl = String(t.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
     return [
       t.cc_rate !== null ? getStatus(t.cc_rate, bl.cc_rate) : null,
       t.termintreue !== null ? getStatus(t.termintreue, bl.termintreue) : null,
@@ -588,6 +682,9 @@ export default function KPIAgent() {
   return (
     <div style={{ background: "#0a0e1a", minHeight: "100vh", fontFamily: "system-ui, sans-serif", color: "#e5e7eb" }}>
       {showKontakte && <KontakteEditor kontakte={kontakte} onSave={setKontakte} onClose={() => setShowKontakte(false)} />}
+      {showBaseline && <BaselineEditor baselines={baselines} onSave={setBaselines} onClose={() => setShowBaseline(false)} />}
+      {showTechVerwaltung && <TechnikerVerwaltung gespeichert={gespeichert} onUpdate={setGespeichert} onClose={() => setShowTechVerwaltung(false)} />}
+
       <div style={{ borderBottom: "1px solid #1f2937", padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#4ade80", boxShadow: "0 0 6px #4ade80", flexShrink: 0 }} />
@@ -613,13 +710,15 @@ export default function KPIAgent() {
             })}
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button onClick={() => setShowKontakte(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 14px", borderRadius: 6, cursor: "pointer", fontSize: 12 }}>👥 Kontakte</button>
-          <label style={{ background: loading ? "#1a2e1a" : "#1f2937", color: loading ? "#4ade80" : "#9ca3af", border: `1px solid ${loading ? "#14532d" : "#374151"}`, padding: "6px 14px", borderRadius: 6, cursor: "pointer", fontSize: 12 }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          <button onClick={() => setShowKontakte(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>👥 Kontakte</button>
+          <button onClick={() => setShowBaseline(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>📊 Baselines</button>
+          <button onClick={() => setShowTechVerwaltung(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>🧑‍🔧 Techniker</button>
+          <label style={{ background: loading ? "#1a2e1a" : "#1f2937", color: loading ? "#4ade80" : "#9ca3af", border: `1px solid ${loading ? "#14532d" : "#374151"}`, padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>
             {loading ? "⏳ Nächste" : "📂 Upload"}
             <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} style={{ display: "none" }} />
           </label>
-          {angezeigt.length > 0 ? <button onClick={exportPDF} disabled={exporting} style={{ background: "#1f2937", color: "#9ca3af", border: "1px solid #374151", padding: "6px 14px", borderRadius: 6, cursor: "pointer", fontSize: 12 }}>📄 PDF</button> : null}
+          {angezeigt.length > 0 ? <button onClick={exportPDF} disabled={exporting} style={{ background: "#1f2937", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>📄 PDF</button> : null}
           {aktiveKategorie !== "alle" && gespeichert[aktiveKategorie] ? <button onClick={() => loescheKategorie(aktiveKategorie)} style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", padding: "6px 10px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>✕</button> : null}
         </div>
       </div>
@@ -678,7 +777,7 @@ export default function KPIAgent() {
             </div>
             {activeTab === "dashboard" && (
               <>
-                <div style={{ marginBottom: 16 }}>{angezeigt.map((t, i) => <TechCard key={i} tech={t} />)}</div>
+                <div style={{ marginBottom: 16 }}>{angezeigt.map((t, i) => <TechCard key={i} tech={t} baselines={baselines} />)}</div>
                 <button onClick={runAnalysis} disabled={loading}
                   style={{ width: "100%", background: loading ? "#1f2937" : "#1d4ed8", color: loading ? "#6b7280" : "#fff", border: "none", borderRadius: 8, padding: "14px", fontSize: 14, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer" }}>
                   {loading ? "⏳ KI analysiert..." : "🤖 KI-Analyse starten"}
