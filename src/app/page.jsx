@@ -379,6 +379,8 @@ function TechCard({ tech, baselines }) {
 function renderMarkdown(text) {
   return text
     .replace(/<MASSNAHMEN>[\s\S]*?<\/MASSNAHMEN>/g, "")
+    .replace(/\{\s*"massnahmen"[\s\S]*?\}(?=\s*$|\s*<|\s*##)/g, "")
+    .replace(/\{\s*"massnahmen"[\s\S]*$/g, "")
     .replace(/## (.*)/g, '<h3 style="color:#f9fafb;margin:20px 0 8px;font-size:14px">$1</h3>')
     .replace(/\*\*(.*?)\*\*/g, '<strong style="color:#e5e7eb">$1</strong>')
     .replace(/\n/g, "<br/>");
@@ -818,9 +820,9 @@ export default function KPIAgent() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            model: "claude-sonnet-4-6", max_tokens: 800,
+            model: "claude-sonnet-4-6", max_tokens: 1000,
             system: "Du bist ein JSON-Generator. Antworte NUR mit purem JSON, kein Text davor oder danach, keine Backticks.",
-            messages: [{ role: "user", content: `Basierend auf dieser KPI-Analyse, erstelle ein JSON mit Massnahmen fuer jeden Techniker:\n\n${text}\n\nFormat GENAU so:\n{"massnahmen":[{"name":"Vollstaendiger Name","status":"kritisch","massnahme":"Konkrete Massnahme","betreff":"KPI Massnahme"}]}` }]
+            messages: [{ role: "user", content: `Erstelle JSON fuer ALLE Techniker aus dieser Analyse - auch die mit guten Werten bekommen ein Lob:\n\n${text}\n\nFormat GENAU so (jeden Techniker einzeln):\n{"massnahmen":[{"name":"Vollstaendiger Name","status":"gut|warnung|kritisch","massnahme":"Bei gut: Lobender Satz. Bei warnung/kritisch: Konkrete Massnahme.","betreff":"Bei gut: Sehr gute KPI-Leistung. Bei schlecht: KPI Massnahme"}]}\n\nWICHTIG: ALLE Techniker listen, nicht nur die schlechten!` }]
           }),
         });
         const data2 = await res2.json();
