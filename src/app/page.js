@@ -567,7 +567,7 @@ function BaselineEditor({ baselines, onSave, onClose }) {
 
 function TechnikerVerwaltung({ gespeichert, onUpdate, onClose }) {
   const [local, setLocal] = useState(JSON.parse(JSON.stringify(gespeichert)));
- const kategorieLabels = { smsfeedback: "SMS-Feedback", smsfeedbackschalten: "Schalten", nftq: "NFTQ", standard: "Manuell", onetouch: "OneTouch" };
+const kategorieLabels = { smsfeedback: "SMS-Feedback", smsfeedbackschalten: "Schalten", nftq: "NFTQ", standard: "Manuell", onetouch: "OneTouch" };
 export default function KPIAgent() {
   const [gespeichert, setGespeichert] = useState({});
   const [kontakte, setKontakte] = useState({});
