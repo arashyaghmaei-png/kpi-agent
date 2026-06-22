@@ -822,7 +822,7 @@ export default function KPIAgent() {
           body: JSON.stringify({
             model: "claude-sonnet-4-6", max_tokens: 1000,
             system: "Du bist ein JSON-Generator. Antworte NUR mit purem JSON, kein Text davor oder danach, keine Backticks.",
-            messages: [{ role: "user", content: `Erstelle JSON fuer ALLE Techniker aus dieser Analyse - auch die mit guten Werten bekommen ein Lob:\n\n${text}\n\nFormat GENAU so (jeden Techniker einzeln):\n{"massnahmen":[{"name":"Vollstaendiger Name","status":"gut|warnung|kritisch","massnahme":"Bei gut: Lobender Satz. Bei warnung/kritisch: Konkrete Massnahme.","betreff":"Bei gut: Sehr gute KPI-Leistung. Bei schlecht: KPI Massnahme"}]}\n\nWICHTIG: ALLE Techniker listen, nicht nur die schlechten!` }]
+            messages: [{ role: "user", content: `Aus dieser KPI-Analyse: Erstelle JSON fuer JEDEN einzelnen Techniker.\n\nDatenquelle:\n${dataStr}\n\nAnalyse:\n${text}\n\nREGELN:\n- Jeden Techniker der in den Daten vorkommt MUSS im JSON erscheinen\n- Status "gut" = freundliches Lob\n- Status "warnung" oder "kritisch" = konkrete Massnahme\n- Name NUR den vollen Namen, KEINE KPI-Werte im Namen\n\nFormat:\n{"massnahmen":[{"name":"Nur Vollstaendiger Name","status":"gut|warnung|kritisch","massnahme":"Lob oder Massnahme","betreff":"Lob oder KPI Massnahme"}]}` }]
           }),
         });
         const data2 = await res2.json();
