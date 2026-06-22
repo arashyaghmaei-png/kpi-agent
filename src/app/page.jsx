@@ -789,8 +789,34 @@ export default function KPIAgent() {
       const data = await res.json();
       const text = data.content?.map(b => b.text || "").join("") || "";
       setAiAnalysis(text);
-      const { massnahmen: parsed, fehler } = parseMassnahmen(text);
-      setMassnahmen(parsed); setMassnahmenFehler(fehler);
+
+      // Zweiter API-Call nur fuer Massnahmen JSON
+      try {
+        const res2 = await fetch("/api/analyse", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6", max_tokens: 800,
+            system: "Du bist ein JSON-Generator. Antworte NUR mit purem JSON, kein Text davor oder danach, keine Backticks.",
+            messages: [{ role: "user", content: `Basierend auf dieser KPI-Analyse, erstelle ein JSON mit Massnahmen fuer jeden Techniker:\n\n${text}\n\nFormat GENAU so:\n{"massnahmen":[{"name":"Vollstaendiger Name","status":"kritisch","massnahme":"Konkrete Massnahme","betreff":"KPI Massnahme"}]}` }]
+          }),
+        });
+        const data2 = await res2.json();
+        const text2 = data2.content?.map(b => b.text || "").join("") || "";
+        const clean2 = text2.replace(/\`\`\`json|\`\`\`/g, "").trim();
+        const json2 = JSON.parse(clean2);
+        if (Array.isArray(json2.massnahmen) && json2.massnahmen.length > 0) {
+          setMassnahmen(json2.massnahmen);
+          setMassnahmenFehler(null);
+        } else {
+          const { massnahmen: parsed, fehler } = parseMassnahmen(text);
+          setMassnahmen(parsed); setMassnahmenFehler(fehler);
+        }
+      } catch(e2) {
+        const { massnahmen: parsed, fehler } = parseMassnahmen(text);
+        setMassnahmen(parsed); setMassnahmenFehler(fehler);
+      }
+
       setActiveTab("analyse");
     } catch (e) { setError("Fehler bei der KI-Analyse."); }
     finally { setLoading(false); }
