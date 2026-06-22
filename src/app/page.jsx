@@ -181,33 +181,50 @@ function getOTStatus(tech) {
 }
 
 function parseMassnahmen(text) {
+  // Versuch 1: <MASSNAHMEN> Block
   try {
-    // Versuch 1: Standard <MASSNAHMEN> Block
     const match = text.match(/<MASSNAHMEN>([\s\S]*?)<\/MASSNAHMEN>/);
     if (match) {
       const clean = match[1].trim().replace(/```json|```/g, "").trim();
-      try {
-        const json = JSON.parse(clean);
-        if (Array.isArray(json.massnahmen) && json.massnahmen.length > 0) {
-          return { massnahmen: json.massnahmen, fehler: null };
-        }
-      } catch(e) {}
+      const json = JSON.parse(clean);
+      if (Array.isArray(json.massnahmen) && json.massnahmen.length > 0)
+        return { massnahmen: json.massnahmen, fehler: null };
     }
-    // Versuch 2: JSON Array direkt im Text suchen
-    const jsonMatch = text.match(/\{[\s\S]*?"massnahmen"[\s\S]*?\[([\s\S]*?)\][\s\S]*?\}/);
+  } catch(e) {}
+
+  // Versuch 2: JSON irgendwo im Text
+  try {
+    const jsonMatch = text.match(/\{\s*"massnahmen"\s*:\s*\[[\s\S]*?\]\s*\}/);
     if (jsonMatch) {
-      const clean = jsonMatch[0].replace(/```json|```/g, "").trim();
-      try {
-        const json = JSON.parse(clean);
-        if (Array.isArray(json.massnahmen) && json.massnahmen.length > 0) {
-          return { massnahmen: json.massnahmen, fehler: null };
-        }
-      } catch(e) {}
+      const json = JSON.parse(jsonMatch[0]);
+      if (Array.isArray(json.massnahmen) && json.massnahmen.length > 0)
+        return { massnahmen: json.massnahmen, fehler: null };
     }
-    return { massnahmen: [], fehler: "Kein gueltiger Massnahmen-Block gefunden." };
-  } catch(e) {
-    return { massnahmen: [], fehler: `Parsing fehlgeschlagen: ${e.message}` };
-  }
+  } catch(e) {}
+
+  // Versuch 3: Text-Parsing - Namen aus Analyse extrahieren
+  try {
+    const massnahmen = [];
+    // Suche nach "Name – Massnahme" oder "Name: Massnahme" Pattern
+    const lines = text.split("\n");
+    let currentName = null;
+    for (const line of lines) {
+      const boldName = line.match(/\*\*([A-Z][a-z]+ [A-Z][a-z]+.*?)\*\*/);
+      if (boldName) currentName = boldName[1].replace(/\s*[-–].*/, "").trim();
+      if (currentName && line.includes("- ") && line.length > 20 && !line.includes("**")) {
+        const massnahme = line.replace(/^[-\s]+/, "").trim();
+        if (massnahme.length > 10) {
+          const existing = massnahmen.find(m => m.name === currentName);
+          if (!existing) {
+            massnahmen.push({ name: currentName, status: "warnung", massnahme, betreff: "KPI Massnahme " + currentName });
+          }
+        }
+      }
+    }
+    if (massnahmen.length > 0) return { massnahmen, fehler: null };
+  } catch(e) {}
+
+  return { massnahmen: [], fehler: "Kein Massnahmen-Block gefunden." };
 }
 
 function getKW(date = new Date()) {
