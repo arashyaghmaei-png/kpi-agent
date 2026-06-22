@@ -30,7 +30,7 @@ OneTouch: A1=erster Besuch erledigt (Ziel >=60%), AX=Abbruch, A0=nicht erledigt 
 Aufgabe: Techniker-KPIs bewerten, Frühwarnungen bei >=7% Abweichung, Leitstellen-Empfehlungen.
 Antworte auf Deutsch, direkt und operativ.
 
-WICHTIG: Gib am Ende der Analyse einen JSON-Block aus in diesem Format (nichts weglassen):
+WICHTIG: Gib am Ende der Analyse einen JSON-Block aus:
 <MASSNAHMEN>
 {
   "massnahmen": [
@@ -286,17 +286,17 @@ function TechCard({ tech }) {
       {isOT && (<>
         <OTStackedBar tech={tech} />
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <KPIBar value={tech.a_ges} baseline={OT_BASELINE.a_ges} label="Gesamterfolg (A Ges.)" />
+          <KPIBar value={tech.a_ges} baseline={OT_BASELINE.a_ges} label="Gesamterfolg" />
           <KPIBar value={tech.a1} baseline={OT_BASELINE.a1} label="Erstlösung (A1)" />
         </div>
         {tech.a0 > 0 ? <div style={{ marginTop: 6, fontSize: 11, color: "#f87171" }}>⚠ A0: {tech.a0.toFixed(1)}%</div> : null}
       </>)}
       {isNFTQ && (<>
         <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>NFTQ Fehlerquoten</div>
-        <NFTQBar value={tech.nftq_b} label="NFTQ Bereitstellung" />
-        <NFTQBar value={tech.nftq_s} label="NFTQ Schalten" />
-        <NFTQBar value={tech.nftq_m} label="NFTQ Montage" />
-        <NFTQBar value={tech.nftq_p} label="NFTQ Problembehebung" />
+        <NFTQBar value={tech.nftq_b} label="Bereitstellung" />
+        <NFTQBar value={tech.nftq_s} label="Schalten" />
+        <NFTQBar value={tech.nftq_m} label="Montage" />
+        <NFTQBar value={tech.nftq_p} label="Problembehebung" />
       </>)}
       {!isOT && !isNFTQ && (<>
         <KPIBar value={tech.cc_rate} baseline={bl.cc_rate} label="CC-Rate" />
@@ -327,19 +327,18 @@ function parseMassnahmen(text) {
 
 function MassnahmenPanel({ massnahmen, kontakte }) {
   if (!massnahmen.length) return null;
-  const statusColor = { kritisch: "#f87171", warnung: "#fbbf24", gut: "#4ade80" };
   const statusBg = { kritisch: "#2e0f0f", warnung: "#2e1f00", gut: "#0f2e1a" };
-
+  const statusColor = { kritisch: "#f87171", warnung: "#fbbf24", gut: "#4ade80" };
   return (
     <div style={{ marginTop: 24 }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: "#f9fafb", marginBottom: 12, borderBottom: "1px solid #1f2937", paddingBottom: 8 }}>
         📋 Maßnahmen pro Techniker
       </div>
       {massnahmen.map((m, i) => {
-        const kontakt = kontakte[m.name] || {};
-        const emailBody = `Hallo ${m.name.split(" ")[0]},\n\nfolgende Maßnahme wurde für Sie festgelegt:\n\n${m.massnahme}\n\nBitte bestätigen Sie die Umsetzung.\n\nMit freundlichen Grüßen\nFiberNC Leitstelle`;
-        const mailtoLink = `mailto:${kontakt.email || ""}?subject=${encodeURIComponent(m.betreff || "KPI Maßnahme")}&body=${encodeURIComponent(emailBody)}`;
-
+        const k = kontakte[m.name] || {};
+        const body = `Hallo ${m.name.split(" ")[0]},\n\nfolgende Maßnahme wurde für Sie festgelegt:\n\n${m.massnahme}\n\nBitte bestätigen Sie die Umsetzung.\n\nMit freundlichen Grüßen\nFiberNC Leitstelle`;
+        const mailto = `mailto:${k.email || ""}?subject=${encodeURIComponent(m.betreff || "KPI Maßnahme")}&body=${encodeURIComponent(body)}`;
+        const waLink = k.mobil ? `https://wa.me/${k.mobil.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(m.massnahme)}` : null;
         return (
           <div key={i} style={{ background: statusBg[m.status] || "#111827", border: `1px solid ${statusColor[m.status] || "#1f2937"}`, borderRadius: 8, padding: "12px 16px", marginBottom: 10 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
@@ -348,15 +347,11 @@ function MassnahmenPanel({ massnahmen, kontakte }) {
                 <div style={{ fontSize: 12, color: "#d1d5db", lineHeight: 1.5 }}>{m.massnahme}</div>
               </div>
               <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                <a href={mailtoLink}
-                  style={{ background: "#1d4ed8", color: "#fff", padding: "5px 12px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
-                  📧 Email
-                </a>
+                <a href={mailto} style={{ background: "#1d4ed8", color: "#fff", padding: "5px 10px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600 }}>📧 Email</a>
+                {waLink ? <a href={waLink} target="_blank" rel="noreferrer" style={{ background: "#15803d", color: "#fff", padding: "5px 10px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600 }}>💬 WA</a> : null}
               </div>
             </div>
-            {!kontakt.email && (
-              <div style={{ marginTop: 6, fontSize: 10, color: "#6b7280" }}>⚠ Keine Email hinterlegt — unter "Kontakte" eintragen</div>
-            )}
+            {(!k.email && !k.mobil) && <div style={{ marginTop: 6, fontSize: 10, color: "#6b7280" }}>⚠ Keine Kontaktdaten — unter "👥 Kontakte" eintragen</div>}
           </div>
         );
       })}
@@ -368,43 +363,57 @@ function KontakteEditor({ kontakte, onSave, onClose }) {
   const [local, setLocal] = useState({ ...kontakte });
   const [neuerName, setNeuerName] = useState("");
   const [neuerEmail, setNeuerEmail] = useState("");
+  const [neuerMobil, setNeuerMobil] = useState("");
 
   const hinzufuegen = () => {
     if (!neuerName.trim()) return;
-    setLocal(prev => ({ ...prev, [neuerName.trim()]: { email: neuerEmail.trim() } }));
-    setNeuerName(""); setNeuerEmail("");
+    setLocal(prev => ({ ...prev, [neuerName.trim()]: { email: neuerEmail.trim(), mobil: neuerMobil.trim() } }));
+    setNeuerName(""); setNeuerEmail(""); setNeuerMobil("");
   };
 
+  const inputStyle = { background: "#1f2937", border: "1px solid #374151", borderRadius: 5, padding: "5px 8px", color: "#e5e7eb", fontSize: 12, width: "100%" };
+
   return (
-    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.8)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 12, padding: 24, width: 480, maxHeight: "80vh", overflowY: "auto" }}>
+    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.85)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 12, padding: 24, width: 580, maxHeight: "85vh", overflowY: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <span style={{ fontWeight: 700, fontSize: 15, color: "#f9fafb" }}>👥 Techniker Kontakte</span>
+          <span style={{ fontWeight: 700, fontSize: 15, color: "#f9fafb" }}>👥 Techniker Stammdaten</span>
           <button onClick={onClose} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 18 }}>✕</button>
         </div>
 
+        {/* Header */}
+        <div style={{ display: "grid", gridTemplateColumns: "150px 1fr 130px 28px", gap: 8, marginBottom: 8, padding: "0 0 8px", borderBottom: "1px solid #1f2937" }}>
+          <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase" }}>Name</div>
+          <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase" }}>Email</div>
+          <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase" }}>Mobil</div>
+          <div />
+        </div>
+
+        {/* Zeilen */}
         {Object.entries(local).map(([name, k]) => (
-          <div key={name} style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
-            <div style={{ width: 160, fontSize: 12, color: "#f9fafb", fontWeight: 600 }}>{name}</div>
-            <input
-              value={k.email || ""}
-              onChange={e => setLocal(prev => ({ ...prev, [name]: { ...prev[name], email: e.target.value } }))}
-              placeholder="email@beispiel.de"
-              style={{ flex: 1, background: "#1f2937", border: "1px solid #374151", borderRadius: 5, padding: "5px 10px", color: "#e5e7eb", fontSize: 12 }}
-            />
+          <div key={name} style={{ display: "grid", gridTemplateColumns: "150px 1fr 130px 28px", gap: 8, marginBottom: 8, alignItems: "center" }}>
+            <div style={{ fontSize: 12, color: "#f9fafb", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={name}>{name}</div>
+            <input value={k.email || ""} onChange={e => setLocal(prev => ({ ...prev, [name]: { ...prev[name], email: e.target.value } }))}
+              placeholder="email@beispiel.de" style={inputStyle} />
+            <input value={k.mobil || ""} onChange={e => setLocal(prev => ({ ...prev, [name]: { ...prev[name], mobil: e.target.value } }))}
+              placeholder="+4915..." style={inputStyle} />
             <button onClick={() => { const n = { ...local }; delete n[name]; setLocal(n); }}
-              style={{ background: "none", border: "none", color: "#4b5563", cursor: "pointer", fontSize: 14 }}>✕</button>
+              style={{ background: "none", border: "none", color: "#4b5563", cursor: "pointer", fontSize: 16, padding: 0 }}>✕</button>
           </div>
         ))}
 
+        {/* Neu hinzufügen */}
         <div style={{ borderTop: "1px solid #1f2937", paddingTop: 16, marginTop: 8 }}>
-          <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>Neuen Techniker hinzufügen:</div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input value={neuerName} onChange={e => setNeuerName(e.target.value)} placeholder="Name"
-              style={{ flex: 1, background: "#1f2937", border: "1px solid #374151", borderRadius: 5, padding: "5px 10px", color: "#e5e7eb", fontSize: 12 }} />
-            <input value={neuerEmail} onChange={e => setNeuerEmail(e.target.value)} placeholder="Email"
-              style={{ flex: 1, background: "#1f2937", border: "1px solid #374151", borderRadius: 5, padding: "5px 10px", color: "#e5e7eb", fontSize: 12 }} />
-            <button onClick={hinzufuegen} style={{ background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 5, padding: "5px 12px", cursor: "pointer", fontSize: 12 }}>+</button>
+          <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>➕ Neuen Techniker hinzufügen:</div>
+          <div style={{ display: "grid", gridTemplateColumns: "150px 1fr 130px 40px", gap: 8 }}>
+            <input value={neuerName} onChange={e => setNeuerName(e.target.value)} placeholder="Vor- Nachname"
+              style={inputStyle} onKeyDown={e => e.key === "Enter" && hinzufuegen()} />
+            <input value={neuerEmail} onChange={e => setNeuerEmail(e.target.value)} placeholder="email@beispiel.de"
+              style={inputStyle} onKeyDown={e => e.key === "Enter" && hinzufuegen()} />
+            <input value={neuerMobil} onChange={e => setNeuerMobil(e.target.value)} placeholder="+4915..."
+              style={inputStyle} onKeyDown={e => e.key === "Enter" && hinzufuegen()} />
+            <button onClick={hinzufuegen}
+              style={{ background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 5, cursor: "pointer", fontSize: 16, fontWeight: 700 }}>+</button>
           </div>
         </div>
 
@@ -458,13 +467,12 @@ export default function KPIAgent() {
     }
   }, [loading, pending]);
 
-  // Beim Laden: Kontakte aus Technikernamen befüllen
   useEffect(() => {
     const alleNamen = Object.values(gespeichert).flat().map(t => t.name);
     const unique = [...new Set(alleNamen)];
     setKontakte(prev => {
       const neu = { ...prev };
-      unique.forEach(name => { if (!neu[name]) neu[name] = { email: "" }; });
+      unique.forEach(name => { if (!neu[name]) neu[name] = { email: "", mobil: "" }; });
       return neu;
     });
   }, [gespeichert]);
@@ -570,13 +578,7 @@ export default function KPIAgent() {
 
   return (
     <div style={{ background: "#0a0e1a", minHeight: "100vh", fontFamily: "system-ui, sans-serif", color: "#e5e7eb" }}>
-      {showKontakte && (
-        <KontakteEditor
-          kontakte={kontakte}
-          onSave={setKontakte}
-          onClose={() => setShowKontakte(false)}
-        />
-      )}
+      {showKontakte && <KontakteEditor kontakte={kontakte} onSave={setKontakte} onClose={() => setShowKontakte(false)} />}
 
       <div style={{ borderBottom: "1px solid #1f2937", padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -605,9 +607,7 @@ export default function KPIAgent() {
         </div>
 
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button onClick={() => setShowKontakte(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 14px", borderRadius: 6, cursor: "pointer", fontSize: 12 }}>
-            👥 Kontakte
-          </button>
+          <button onClick={() => setShowKontakte(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 14px", borderRadius: 6, cursor: "pointer", fontSize: 12 }}>👥 Kontakte</button>
           <label style={{ background: loading ? "#1a2e1a" : "#1f2937", color: loading ? "#4ade80" : "#9ca3af", border: `1px solid ${loading ? "#14532d" : "#374151"}`, padding: "6px 14px", borderRadius: 6, cursor: "pointer", fontSize: 12 }}>
             {loading ? "⏳ Nächste" : "📂 Upload"}
             <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} style={{ display: "none" }} />
