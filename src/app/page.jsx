@@ -829,35 +829,40 @@ export default function KPIAgent() {
         const text2 = data2.content?.map(b => b.text || "").join("") || "";
         const clean2 = text2.replace(/\`\`\`json|\`\`\`/g, "").trim();
         const json2 = JSON.parse(clean2);
-        // Merge KI-Massnahmen mit automatisch generierten Lob-Eintraegen
+        // Fuer JEDEN Techniker einen Eintrag erstellen
+        // KI-Eintraege haben Vorrang, Rest wird automatisch generiert
         const kiMassnahmen = Array.isArray(json2.massnahmen) ? json2.massnahmen : [];
-        const kiNamen = kiMassnahmen.map(m => m.name.toLowerCase().trim());
-
-        // Fuer jeden Techniker ohne KI-Eintrag: automatisch Lob oder Warnung generieren
-        const autoMassnahmen = angezeigt
-          .filter(t => !kiNamen.some(n => n.includes(t.name.toLowerCase().split(" ")[0]) || t.name.toLowerCase().includes(n.split(" ")[0])))
-          .map(t => {
-            const bl = String(t.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
-            const statuses = [
-              t.cc_rate !== null ? getStatus(t.cc_rate, bl.cc_rate) : null,
-              t.termintreue !== null ? getStatus(t.termintreue, bl.termintreue) : null,
-              t.nps !== null ? getNPSStatus(t.nps) : null,
-            ].filter(Boolean);
-            const worst = statuses.includes("kritisch") ? "kritisch" : statuses.includes("warnung") ? "warnung" : "gut";
-            const massnahme = worst === "gut"
-              ? `Hervorragende Leistung! Alle KPI-Werte im grünen Bereich. Weiter so!`
-              : `KPI-Werte prüfen und Verbesserungsmaßnahmen einleiten.`;
-            return { name: t.name, status: worst, massnahme, betreff: worst === "gut" ? "Lob: Sehr gute KPI-Leistung" : "KPI Maßnahme" };
+        
+        const alleMassnahmen = angezeigt.map(t => {
+          // Suche KI-Eintrag fuer diesen Techniker (flexibler Vergleich)
+          const firstName = t.name.split(" ")[0].toLowerCase();
+          const lastName = t.name.split(" ").slice(-1)[0].toLowerCase();
+          const kiEintrag = kiMassnahmen.find(m => {
+            const mn = m.name.toLowerCase();
+            return mn.includes(firstName) || mn.includes(lastName) || t.name.toLowerCase().includes(mn.split(" ")[0]);
           });
+          
+          if (kiEintrag) return { ...kiEintrag, name: t.name };
+          
+          // Automatisch generieren wenn kein KI-Eintrag
+          const bl = String(t.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
+          const statuses = [
+            t.cc_rate !== null ? getStatus(t.cc_rate, bl.cc_rate) : null,
+            t.termintreue !== null ? getStatus(t.termintreue, bl.termintreue) : null,
+            t.nps !== null ? getNPSStatus(t.nps) : null,
+            t.a1 !== null ? (t.a1 >= 60 ? "gut" : t.a1 >= 45 ? "warnung" : "kritisch") : null,
+          ].filter(Boolean);
+          const worst = statuses.includes("kritisch") ? "kritisch" : statuses.includes("warnung") ? "warnung" : "gut";
+          return {
+            name: t.name,
+            status: worst,
+            massnahme: worst === "gut" ? "Hervorragende Leistung! Alle KPI-Werte im grünen Bereich — weiter so!" : "KPI-Werte prüfen und Verbesserungsmaßnahmen einleiten.",
+            betreff: worst === "gut" ? "Lob: Sehr gute KPI-Leistung" : "KPI Maßnahme"
+          };
+        });
 
-        const alleMassnahmen = [...kiMassnahmen, ...autoMassnahmen];
-        if (alleMassnahmen.length > 0) {
-          setMassnahmen(alleMassnahmen);
-          setMassnahmenFehler(null);
-        } else {
-          const { massnahmen: parsed, fehler } = parseMassnahmen(text);
-          setMassnahmen(parsed); setMassnahmenFehler(fehler);
-        }
+        setMassnahmen(alleMassnahmen);
+        setMassnahmenFehler(null);
       } catch(e2) {
         const { massnahmen: parsed, fehler } = parseMassnahmen(text);
         setMassnahmen(parsed); setMassnahmenFehler(fehler);
