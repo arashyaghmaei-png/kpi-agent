@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
@@ -9,6 +9,7 @@ const BASELINE = { cc_rate: 97.6, termintreue: 97.7, loesungsquote: 96.0, nps: 6
 const BASELINE_FS5335 = { cc_rate: 99.6, termintreue: 99.1, loesungsquote: 96.9, nps: 74.4 };
 const BASELINE_FS5336 = { cc_rate: 95.7, termintreue: 96.7, loesungsquote: 97.2, nps: 66.7 };
 const OT_BASELINE = { a_ges: 95.0, a1: 60.0 };
+const STORAGE_KEY = "fibernc_kpi_sessions";
 
 const SYSTEM_PROMPT = `Du bist ein operativer KPI-Analyseagent für ein Telekommunikations-Subunternehmen (Telekom-Subunternehmer, Kupfer & FTTH, Bergheim NRW).
 Baseline KW13-19: CC=${BASELINE.cc_rate}% | Termintreue=${BASELINE.termintreue}% | Lösungsquote=${BASELINE.loesungsquote}%
@@ -327,17 +328,60 @@ export default function KPIAgent() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [fileName, setFileName] = useState("");
   const [detectedFormat, setDetectedFormat] = useState(null);
+  const [sessions, setSessions] = useState([]);
+  const [showSessions, setShowSessions] = useState(false);
   const dashboardRef = useRef(null);
 
-  const handleRows = useCallback((rows, name) => {
+  // Beim Start gespeicherte Sessions laden
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) setSessions(JSON.parse(saved));
+    } catch(e) {}
+  }, []);
+
+  // Sessions speichern wenn sie sich ändern
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
+    } catch(e) {}
+  }, [sessions]);
+
+  const handleRows = useCallback((rows, name, skipSave) => {
     if (!rows.length) { setError("Keine verwertbaren Daten gefunden."); return; }
     const formats = [...new Set(rows.map(r => r.quelle))];
-    setDetectedFormat(formats.length === 1 ? formats[0] : "mixed");
+    const fmt = formats.length === 1 ? formats[0] : "mixed";
+    setDetectedFormat(fmt);
     setTechniker(rows);
     setAiAnalysis("");
     setFileName(name);
     setError("");
+    setActiveTab("dashboard");
+
+    // Session speichern
+    if (!skipSave) {
+      const session = {
+        id: Date.now(),
+        name,
+        format: fmt,
+        datum: new Date().toLocaleDateString("de-DE"),
+        uhrzeit: new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }),
+        techniker: rows,
+      };
+      setSessions(prev => [session, ...prev.slice(0, 19)]); // max 20 Sessions
+    }
   }, []);
+
+  const loadSession = (session) => {
+    handleRows(session.techniker, session.name, true);
+    setDetectedFormat(session.format);
+    setShowSessions(false);
+  };
+
+  const deleteSession = (id, e) => {
+    e.stopPropagation();
+    setSessions(prev => prev.filter(s => s.id !== id));
+  };
 
   const processXLSX = useCallback(async (file) => {
     try {
@@ -414,15 +458,49 @@ export default function KPIAgent() {
 
   return (
     <div style={{ background: "#0a0e1a", minHeight: "100vh", fontFamily: "system-ui, sans-serif", color: "#e5e7eb" }}>
+      {/* Header */}
       <div style={{ borderBottom: "1px solid #1f2937", padding: "14px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#4ade80", boxShadow: "0 0 6px #4ade80" }} />
-          <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: 2, color: "#9ca3af", textTransform: "uppercase" }}>KPI Agent</span>
+          {/* KPI Agent Button — klickbar zum Aktualisieren */}
+          <button onClick={() => window.location.reload()} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: 2, color: "#9ca3af", textTransform: "uppercase" }}>KPI Agent</span>
+            <span style={{ fontSize: 10, color: "#374151" }}>↻</span>
+          </button>
           <span style={{ color: "#374151" }}>·</span>
           <span style={{ fontSize: 12, color: "#6b7280" }}>Techniker-Kontrolle FiberNC</span>
           {detectedFormat ? <FormatBadge format={detectedFormat} /> : null}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {/* Sessions Button */}
+          <div style={{ position: "relative" }}>
+            <button onClick={() => setShowSessions(!showSessions)}
+              style={{ background: "#1f2937", color: sessions.length > 0 ? "#60a5fa" : "#6b7280", border: "1px solid #374151", padding: "6px 14px", borderRadius: 6, cursor: "pointer", fontSize: 12 }}>
+              📂 Verlauf {sessions.length > 0 ? `(${sessions.length})` : ""}
+            </button>
+            {showSessions && (
+              <div style={{ position: "absolute", right: 0, top: 36, width: 320, background: "#111827", border: "1px solid #1f2937", borderRadius: 8, zIndex: 100, maxHeight: 400, overflowY: "auto" }}>
+                <div style={{ padding: "12px 16px", borderBottom: "1px solid #1f2937", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#f9fafb" }}>Gespeicherte Auswertungen</span>
+                  {sessions.length > 0 ? <button onClick={() => { setSessions([]); setShowSessions(false); }} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 11 }}>Alle löschen</button> : null}
+                </div>
+                {sessions.length === 0 ? (
+                  <div style={{ padding: 20, textAlign: "center", color: "#6b7280", fontSize: 12 }}>Noch keine Auswertungen gespeichert</div>
+                ) : sessions.map(s => (
+                  <div key={s.id} onClick={() => loadSession(s)}
+                    style={{ padding: "10px 16px", borderBottom: "1px solid #1f2937", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "#1f2937"}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                    <div>
+                      <div style={{ fontSize: 12, color: "#f9fafb", fontWeight: 600 }}>{s.name}</div>
+                      <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>{s.datum} {s.uhrzeit} · {s.techniker.length} Techniker · <FormatBadge format={s.format} /></div>
+                    </div>
+                    <button onClick={(e) => deleteSession(s.id, e)} style={{ background: "none", border: "none", color: "#4b5563", cursor: "pointer", fontSize: 14, padding: "0 4px" }}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           {techniker.length > 0 ? <button onClick={exportPDF} disabled={exporting} style={{ background: "#1f2937", color: "#9ca3af", border: "1px solid #374151", padding: "6px 14px", borderRadius: 6, cursor: "pointer", fontSize: 12 }}>📄 PDF</button> : null}
           <span style={{ fontSize: 11, color: "#4b5563", fontFamily: "monospace" }}>Baseline KW13–19</span>
         </div>
@@ -444,6 +522,20 @@ export default function KPIAgent() {
             </label>
             <button onClick={loadExample} style={{ background: "#1f2937", color: "#9ca3af", border: "1px solid #374151", padding: "10px 24px", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Beispieldaten</button>
             {error && <div style={{ marginTop: 16, color: "#f87171", fontSize: 13 }}>{error}</div>}
+            {sessions.length > 0 && (
+              <div style={{ marginTop: 32, textAlign: "left", maxWidth: 400, margin: "32px auto 0" }}>
+                <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 12, textAlign: "center" }}>— oder letzte Auswertung laden —</div>
+                {sessions.slice(0, 3).map(s => (
+                  <div key={s.id} onClick={() => loadSession(s)}
+                    style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8, padding: "12px 16px", marginBottom: 8, cursor: "pointer" }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = "#3b82f6"}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = "#1f2937"}>
+                    <div style={{ fontSize: 13, color: "#f9fafb", fontWeight: 600 }}>{s.name}</div>
+                    <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>{s.datum} {s.uhrzeit} · {s.techniker.length} Techniker</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
