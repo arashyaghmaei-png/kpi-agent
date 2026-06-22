@@ -34,14 +34,11 @@ OneTouch: A1=erster Besuch erledigt (Ziel >=60%), AX=Abbruch, A0=nicht erledigt 
 Aufgabe: Techniker-KPIs bewerten, Frühwarnungen bei >=7% Abweichung, Leitstellen-Empfehlungen.
 Antworte auf Deutsch, direkt und operativ.
 
-WICHTIG: Gib am Ende der Analyse einen JSON-Block aus:
+PFLICHT - IMMER AM ENDE AUSGEBEN - OHNE AUSNAHME:
 <MASSNAHMEN>
-{
-  "massnahmen": [
-    {"name": "Vollständiger Name", "status": "kritisch|warnung|gut", "massnahme": "Konkrete Maßnahme in einem Satz", "betreff": "Email-Betreff"}
-  ]
-}
+{"massnahmen":[{"name":"Vollständiger Techniker Name","status":"kritisch|warnung|gut","massnahme":"Konkrete Maßnahme","betreff":"KPI Maßnahme"}]}
 </MASSNAHMEN>
+Jeden Techniker einzeln auflisten. Kein Markdown, kein Kommentar innerhalb des JSON.
 
 ## KPI-Übersicht
 ## Frühwarnungen
@@ -185,14 +182,31 @@ function getOTStatus(tech) {
 
 function parseMassnahmen(text) {
   try {
+    // Versuch 1: Standard <MASSNAHMEN> Block
     const match = text.match(/<MASSNAHMEN>([\s\S]*?)<\/MASSNAHMEN>/);
-    if (!match) return { massnahmen: [], fehler: "Kein <MASSNAHMEN>-Block gefunden." };
-    const clean = match[1].trim().replace(/```json|```/g, "").trim();
-    const json = JSON.parse(clean);
-    if (!Array.isArray(json.massnahmen)) return { massnahmen: [], fehler: "JSON-Format ungültig." };
-    return { massnahmen: json.massnahmen, fehler: null };
+    if (match) {
+      const clean = match[1].trim().replace(/```json|```/g, "").trim();
+      try {
+        const json = JSON.parse(clean);
+        if (Array.isArray(json.massnahmen) && json.massnahmen.length > 0) {
+          return { massnahmen: json.massnahmen, fehler: null };
+        }
+      } catch(e) {}
+    }
+    // Versuch 2: JSON Array direkt im Text suchen
+    const jsonMatch = text.match(/\{[\s\S]*?"massnahmen"[\s\S]*?\[([\s\S]*?)\][\s\S]*?\}/);
+    if (jsonMatch) {
+      const clean = jsonMatch[0].replace(/```json|```/g, "").trim();
+      try {
+        const json = JSON.parse(clean);
+        if (Array.isArray(json.massnahmen) && json.massnahmen.length > 0) {
+          return { massnahmen: json.massnahmen, fehler: null };
+        }
+      } catch(e) {}
+    }
+    return { massnahmen: [], fehler: "Kein gueltiger Massnahmen-Block gefunden." };
   } catch(e) {
-    return { massnahmen: [], fehler: `JSON-Parsing fehlgeschlagen: ${e.message}` };
+    return { massnahmen: [], fehler: `Parsing fehlgeschlagen: ${e.message}` };
   }
 }
 
@@ -847,13 +861,14 @@ export default function KPIAgent() {
   };
 
   const teamAvgScore = () => {
-    const scores = angezeigt.map(t => berechneTechScore(t)).filter(s => s !== null);
+    const scores = angezeigt.map(t => berechneTechScore(t)).filter(s => s !== null && !isNaN(s));
     return scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : "—";
   };
 
   const isOTView = aktiveKategorie === "onetouch";
 
   const FirmendashboardTab = () => {
+    if (!angezeigt || !angezeigt.length) return null;
     const sorted = [...angezeigt].sort((a, b) => (berechneTechScore(b) || 0) - (berechneTechScore(a) || 0));
     return (
       <div>
