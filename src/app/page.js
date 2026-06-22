@@ -455,4 +455,53 @@ export default function KPIAgent() {
                 { label: "Techniker", value: techniker.length, color: "#60a5fa" },
                 { label: "Kritisch", value: criticalCount, color: criticalCount > 0 ? "#f87171" : "#4ade80" },
                 { label: "Ø A1-Rate", value: avg("a1") !== "—" ? `${avg("a1")}%` : "—", color: "#4ade80" },
-                { label: "Ø A-Gesamt", value: avg("a_ges") !== "—" ? `${avg("a_ges")}%` : "—",
+                { label: "Ø A-Gesamt", value: avg("a_ges") !== "—" ? `${avg("a_ges")}%` : "—", color: "#fbbf24" },
+              ] : [
+                { label: "Techniker", value: techniker.length, color: "#60a5fa" },
+                { label: "Kritisch", value: criticalCount, color: criticalCount > 0 ? "#f87171" : "#4ade80" },
+                { label: "Ø CC-Rate", value: avg("cc_rate") !== "—" ? `${avg("cc_rate")}%` : "—", color: "#fbbf24" },
+                { label: "Ø Termintreue", value: avg("termintreue") !== "—" ? `${avg("termintreue")}%` : "—", color: "#fbbf24" },
+              ]).map(s => (
+                <div key={s.label} style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8, padding: "12px 14px" }}>
+                  <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 4 }}>{s.label}</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: s.color, fontFamily: "monospace" }}>{s.value}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", marginBottom: 16, borderBottom: "1px solid #1f2937" }}>
+              {[{ id: "dashboard", label: "Dashboard" }, { id: "analyse", label: "KI-Analyse" + (aiAnalysis ? " ✓" : "") }].map(tab => (
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                  style={{ background: "none", border: "none", borderBottom: activeTab === tab.id ? "2px solid #3b82f6" : "2px solid transparent", color: activeTab === tab.id ? "#f9fafb" : "#6b7280", padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: activeTab === tab.id ? 600 : 400, marginBottom: -1 }}>
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {activeTab === "dashboard" && (
+              <>
+                <div style={{ marginBottom: 16 }}>{techniker.map((t, i) => <TechCard key={i} tech={t} />)}</div>
+                <button onClick={runAnalysis} disabled={loading} style={{ width: "100%", background: loading ? "#1f2937" : "#1d4ed8", color: loading ? "#6b7280" : "#fff", border: "none", borderRadius: 8, padding: "14px", fontSize: 14, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer" }}>
+                  {loading ? "KI analysiert..." : "🤖 KI-Analyse starten"}
+                </button>
+                <button onClick={() => { setTechniker([]); setAiAnalysis(""); setFileName(""); setError(""); setDetectedFormat(null); }}
+                  style={{ width: "100%", marginTop: 8, background: "none", color: "#4b5563", border: "1px solid #1f2937", borderRadius: 8, padding: "10px", fontSize: 12, cursor: "pointer" }}>
+                  Neue Datei laden
+                </button>
+              </>
+            )}
+
+            {activeTab === "analyse" && (
+              <div>
+                {!aiAnalysis && !loading ? <div style={{ textAlign: "center", padding: "40px", color: "#6b7280" }}>Noch keine Analyse. Dashboard öffnen und starten.</div> : null}
+                {loading ? <div style={{ textAlign: "center", padding: "40px", color: "#6b7280" }}>KI analysiert...</div> : null}
+                {aiAnalysis ? <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8, padding: "20px", fontSize: 13, lineHeight: 1.8, color: "#d1d5db" }} dangerouslySetInnerHTML={{ __html: renderMarkdown(aiAnalysis) }} /> : null}
+                {error && <div style={{ background: "#2e0f0f", border: "1px solid #7f1d1d", borderRadius: 8, padding: 16, color: "#f87171", fontSize: 13 }}>{error}</div>}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
