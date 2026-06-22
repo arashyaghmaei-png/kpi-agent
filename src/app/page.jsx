@@ -846,18 +846,24 @@ export default function KPIAgent() {
           
           // Automatisch generieren wenn kein KI-Eintrag
           const bl = String(t.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
-          const statuses = [
-            t.cc_rate !== null ? getStatus(t.cc_rate, bl.cc_rate) : null,
-            t.termintreue !== null ? getStatus(t.termintreue, bl.termintreue) : null,
-            t.nps !== null ? getNPSStatus(t.nps) : null,
-            t.a1 !== null ? (t.a1 >= 60 ? "gut" : t.a1 >= 45 ? "warnung" : "kritisch") : null,
-          ].filter(Boolean);
-          const worst = statuses.includes("kritisch") ? "kritisch" : statuses.includes("warnung") ? "warnung" : "gut";
+          const statusList = [];
+          if (t.cc_rate !== null) statusList.push(getStatus(t.cc_rate, bl.cc_rate));
+          if (t.termintreue !== null) statusList.push(getStatus(t.termintreue, bl.termintreue));
+          if (t.loesungsquote !== null) statusList.push(getStatus(t.loesungsquote, bl.loesungsquote));
+          if (t.nps !== null) statusList.push(getNPSStatus(t.nps));
+          if (t.a1 !== null) statusList.push(t.a1 >= 60 ? "gut" : t.a1 >= 45 ? "warnung" : "kritisch");
+          if (t.a0 !== null && t.a0 > 10) statusList.push("kritisch");
+          const worst = statusList.includes("kritisch") ? "kritisch" : statusList.includes("warnung") ? "warnung" : "gut";
+          const lobText = t.nps !== null && t.nps >= 50
+            ? `Ausgezeichnete Leistung! NPS ${t.nps.toFixed(0)} weit über Durchschnitt — Sie sind ein Vorbild im Team!`
+            : t.cc_rate !== null && t.cc_rate >= 99
+            ? `Sehr gute CC-Rate ${t.cc_rate.toFixed(1)}% — hervorragende Arbeit, weiter so!`
+            : "Hervorragende Leistung! Alle KPI-Werte im grünen Bereich — weiter so!";
           return {
             name: t.name,
             status: worst,
-            massnahme: worst === "gut" ? "Hervorragende Leistung! Alle KPI-Werte im grünen Bereich — weiter so!" : "KPI-Werte prüfen und Verbesserungsmaßnahmen einleiten.",
-            betreff: worst === "gut" ? "Lob: Sehr gute KPI-Leistung" : "KPI Maßnahme"
+            massnahme: worst === "gut" ? lobText : worst === "warnung" ? "KPI-Entwicklung beobachten und gezielt verbessern." : "Sofortgespräch mit Leitstelle — konkrete Verbesserungsmaßnahmen einleiten.",
+            betreff: worst === "gut" ? "Lob: Sehr gute KPI-Leistung" : worst === "warnung" ? "KPI Verbesserung erforderlich" : "Dringend: KPI kritisch"
           };
         });
 
@@ -867,18 +873,24 @@ export default function KPIAgent() {
         // Zweiter API-Call fehlgeschlagen - direkt aus angezeigt generieren
         const autoMassnahmen = angezeigt.map(t => {
           const bl = String(t.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
-          const statuses = [
-            t.cc_rate !== null ? getStatus(t.cc_rate, bl.cc_rate) : null,
-            t.termintreue !== null ? getStatus(t.termintreue, bl.termintreue) : null,
-            t.nps !== null ? getNPSStatus(t.nps) : null,
-            t.a1 !== null ? (t.a1 >= 60 ? "gut" : t.a1 >= 45 ? "warnung" : "kritisch") : null,
-          ].filter(Boolean);
-          const worst = statuses.includes("kritisch") ? "kritisch" : statuses.includes("warnung") ? "warnung" : "gut";
+          const statusList = [];
+          if (t.cc_rate !== null) statusList.push(getStatus(t.cc_rate, bl.cc_rate));
+          if (t.termintreue !== null) statusList.push(getStatus(t.termintreue, bl.termintreue));
+          if (t.loesungsquote !== null) statusList.push(getStatus(t.loesungsquote, bl.loesungsquote));
+          if (t.nps !== null) statusList.push(getNPSStatus(t.nps));
+          if (t.a1 !== null) statusList.push(t.a1 >= 60 ? "gut" : t.a1 >= 45 ? "warnung" : "kritisch");
+          if (t.a0 !== null && t.a0 > 10) statusList.push("kritisch");
+          const worst = statusList.includes("kritisch") ? "kritisch" : statusList.includes("warnung") ? "warnung" : "gut";
+          const lobText = t.nps !== null && t.nps >= 50
+            ? `Ausgezeichnete Leistung! NPS ${t.nps.toFixed(0)} weit über Durchschnitt — Sie sind ein Vorbild im Team!`
+            : t.cc_rate !== null && t.cc_rate >= 99
+            ? `Sehr gute CC-Rate ${t.cc_rate.toFixed(1)}% und Termintreue ${t.termintreue?.toFixed(1) ?? "—"}% — hervorragende Arbeit!`
+            : "Hervorragende Leistung! Alle KPI-Werte im grünen Bereich — weiter so!";
           return {
             name: t.name,
             status: worst,
-            massnahme: worst === "gut" ? "Hervorragende Leistung! Alle KPI-Werte im grünen Bereich — weiter so!" : "KPI-Werte prüfen und Verbesserungsmaßnahmen einleiten.",
-            betreff: worst === "gut" ? "Lob: Sehr gute KPI-Leistung" : "KPI Maßnahme"
+            massnahme: worst === "gut" ? lobText : worst === "warnung" ? "Bitte KPI-Entwicklung beobachten und gezielt verbessern." : "Sofortgespräch mit Leitstelle — konkrete Verbesserungsmaßnahmen einleiten.",
+            betreff: worst === "gut" ? "Lob: Sehr gute KPI-Leistung" : worst === "warnung" ? "KPI Verbesserung erforderlich" : "Dringend: KPI kritisch"
           };
         });
         setMassnahmen(autoMassnahmen);
