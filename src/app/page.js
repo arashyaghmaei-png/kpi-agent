@@ -861,7 +861,7 @@ export default function KPIAgent() {
           <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>Team-Übersicht</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
             {[
-              { label: "Ø Team-Score", value: `${teamAvgScore()}/10`, color: scoreColor(parseFloat(teamAvgScore())) },
+              { label: "Avg Team-Score", value: teamAvgScore() + "/10", color: scoreColor(parseFloat(teamAvgScore())) },
               { label: "Kritisch", value: criticalCount, color: criticalCount > 0 ? "#f87171" : "#4ade80" },
               { label: "Bewertet", value: `${Object.keys(techBewertungen).length}/${angezeigt.length}`, color: "#60a5fa" },
             ].map(s => (
@@ -1022,9 +1022,9 @@ export default function KPIAgent() {
               {(isOTView ? [
                 { label: "Techniker", value: angezeigt.length, color: "#60a5fa" },
                 { label: "Kritisch", value: criticalCount, color: criticalCount > 0 ? "#f87171" : "#4ade80" },
-                { label: "Ø A1-Rate", value: avg("a1") !== "—" ? `${avg("a1")}%` : "—", color: "#4ade80" },
-                { label: "Ø Score", value: `${teamAvgScore()}/10`, color: scoreColor(parseFloat(teamAvgScore())) },
+                { label: "Avg A1-Rate", value: avg("a1") !== "-" ? avg("a1") + "%" : "-", color: "#4ade80" },
+                { label: "Avg Score", value: teamAvgScore() + "/10", color: scoreColor(parseFloat(teamAvgScore())) },
               ] : [
                 { label: "Techniker", value: angezeigt.length, color: "#60a5fa" },
                 { label: "Kritisch", value: criticalCount, color: criticalCount > 0 ? "#f87171" : "#4ade80" },
-                { label: "Ø CC-
+                { label: 
