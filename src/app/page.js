@@ -10,6 +10,7 @@ const BASELINE_FS5335 = { cc_rate: 99.6, termintreue: 99.1, loesungsquote: 96.9,
 const BASELINE_FS5336 = { cc_rate: 95.7, termintreue: 96.7, loesungsquote: 97.2, nps: 66.7 };
 const OT_BASELINE = { a_ges: 95.0, a1: 60.0 };
 const STORAGE_KEY = "fibernc_kpi_v2";
+const KONTAKTE_KEY = "fibernc_kontakte";
 
 const KATEGORIEN = [
   { id: "alle", label: "Alle" },
@@ -28,6 +29,15 @@ KW20 schlechteste Woche (NPS 26, Termintreue 85,7%). KW23-24 FS5336 kritisch: CC
 OneTouch: A1=erster Besuch erledigt (Ziel >=60%), AX=Abbruch, A0=nicht erledigt (kritisch >10%).
 Aufgabe: Techniker-KPIs bewerten, Frühwarnungen bei >=7% Abweichung, Leitstellen-Empfehlungen.
 Antworte auf Deutsch, direkt und operativ.
+
+WICHTIG: Gib am Ende der Analyse einen JSON-Block aus in diesem Format (nichts weglassen):
+<MASSNAHMEN>
+{
+  "massnahmen": [
+    {"name": "Vollständiger Name", "status": "kritisch|warnung|gut", "massnahme": "Konkrete Maßnahme in einem Satz", "betreff": "Email-Betreff"}
+  ]
+}
+</MASSNAHMEN>
 
 ## KPI-Übersicht
 [Techniker, Wert, Baseline-Delta, Status]
@@ -246,9 +256,8 @@ function TechCard({ tech }) {
   const isOT = tech.quelle === "onetouch";
   const bl = String(tech.standort) === "5336" ? BASELINE_FS5336 : BASELINE_FS5335;
   let worst = "gut";
-  if (isOT) {
-    worst = getOTStatus(tech);
-  } else if (isNFTQ) {
+  if (isOT) worst = getOTStatus(tech);
+  else if (isNFTQ) {
     const vals = [tech.nftq_b, tech.nftq_s, tech.nftq_m, tech.nftq_p].filter(v => v !== null);
     worst = vals.some(v => v > 10) ? "kritisch" : vals.some(v => v > 5) ? "warnung" : "gut";
   } else {
@@ -274,82 +283,191 @@ function TechCard({ tech }) {
         </div>
         <StatusBadge status={worst} />
       </div>
-      {isOT && (
-        <>
-          <OTStackedBar tech={tech} />
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <KPIBar value={tech.a_ges} baseline={OT_BASELINE.a_ges} label="Gesamterfolg (A Ges.)" />
-            <KPIBar value={tech.a1} baseline={OT_BASELINE.a1} label="Erstlösung (A1)" />
-          </div>
-          {tech.a0 > 0 ? <div style={{ marginTop: 6, fontSize: 11, color: "#f87171" }}>⚠ A0 (nicht erledigt): {tech.a0.toFixed(1)}%</div> : null}
-        </>
-      )}
-      {isNFTQ && (
-        <>
-          <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>NFTQ Fehlerquoten (niedriger = besser)</div>
-          <NFTQBar value={tech.nftq_b} label="NFTQ Bereitstellung" />
-          <NFTQBar value={tech.nftq_s} label="NFTQ Schalten" />
-          <NFTQBar value={tech.nftq_m} label="NFTQ Montage" />
-          <NFTQBar value={tech.nftq_p} label="NFTQ Problembehebung" />
-        </>
-      )}
-      {!isOT && !isNFTQ && (
-        <>
-          <KPIBar value={tech.cc_rate} baseline={bl.cc_rate} label="CC-Rate" />
-          <KPIBar value={tech.termintreue} baseline={bl.termintreue} label="Termintreue" />
-          <KPIBar value={tech.loesungsquote} baseline={bl.loesungsquote} label="Lösungsquote" />
-          {tech.nps !== null ? (
-            <div style={{ marginTop: 8, fontSize: 11, color: "#9ca3af" }}>
-              NPS: <span style={{ color: tech.nps >= 50 ? "#4ade80" : tech.nps >= 0 ? "#fbbf24" : "#f87171", fontWeight: 700 }}>{tech.nps.toFixed(0)}</span>
-            </div>
-          ) : null}
-        </>
-      )}
+      {isOT && (<>
+        <OTStackedBar tech={tech} />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <KPIBar value={tech.a_ges} baseline={OT_BASELINE.a_ges} label="Gesamterfolg (A Ges.)" />
+          <KPIBar value={tech.a1} baseline={OT_BASELINE.a1} label="Erstlösung (A1)" />
+        </div>
+        {tech.a0 > 0 ? <div style={{ marginTop: 6, fontSize: 11, color: "#f87171" }}>⚠ A0: {tech.a0.toFixed(1)}%</div> : null}
+      </>)}
+      {isNFTQ && (<>
+        <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>NFTQ Fehlerquoten</div>
+        <NFTQBar value={tech.nftq_b} label="NFTQ Bereitstellung" />
+        <NFTQBar value={tech.nftq_s} label="NFTQ Schalten" />
+        <NFTQBar value={tech.nftq_m} label="NFTQ Montage" />
+        <NFTQBar value={tech.nftq_p} label="NFTQ Problembehebung" />
+      </>)}
+      {!isOT && !isNFTQ && (<>
+        <KPIBar value={tech.cc_rate} baseline={bl.cc_rate} label="CC-Rate" />
+        <KPIBar value={tech.termintreue} baseline={bl.termintreue} label="Termintreue" />
+        <KPIBar value={tech.loesungsquote} baseline={bl.loesungsquote} label="Lösungsquote" />
+        {tech.nps !== null ? <div style={{ marginTop: 8, fontSize: 11, color: "#9ca3af" }}>NPS: <span style={{ color: tech.nps >= 50 ? "#4ade80" : tech.nps >= 0 ? "#fbbf24" : "#f87171", fontWeight: 700 }}>{tech.nps.toFixed(0)}</span></div> : null}
+      </>)}
     </div>
   );
 }
 
 function renderMarkdown(text) {
   return text
+    .replace(/<MASSNAHMEN>[\s\S]*?<\/MASSNAHMEN>/g, "")
     .replace(/## (.*)/g, '<h3 style="color:#f9fafb;margin:20px 0 8px;font-size:14px">$1</h3>')
     .replace(/\*\*(.*?)\*\*/g, '<strong style="color:#e5e7eb">$1</strong>')
     .replace(/\n/g, "<br/>");
 }
 
+function parseMassnahmen(text) {
+  try {
+    const match = text.match(/<MASSNAHMEN>([\s\S]*?)<\/MASSNAHMEN>/);
+    if (!match) return [];
+    const json = JSON.parse(match[1].trim());
+    return json.massnahmen || [];
+  } catch(e) { return []; }
+}
+
+function MassnahmenPanel({ massnahmen, kontakte }) {
+  if (!massnahmen.length) return null;
+  const statusColor = { kritisch: "#f87171", warnung: "#fbbf24", gut: "#4ade80" };
+  const statusBg = { kritisch: "#2e0f0f", warnung: "#2e1f00", gut: "#0f2e1a" };
+
+  return (
+    <div style={{ marginTop: 24 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: "#f9fafb", marginBottom: 12, borderBottom: "1px solid #1f2937", paddingBottom: 8 }}>
+        📋 Maßnahmen pro Techniker
+      </div>
+      {massnahmen.map((m, i) => {
+        const kontakt = kontakte[m.name] || {};
+        const emailBody = `Hallo ${m.name.split(" ")[0]},\n\nfolgende Maßnahme wurde für Sie festgelegt:\n\n${m.massnahme}\n\nBitte bestätigen Sie die Umsetzung.\n\nMit freundlichen Grüßen\nFiberNC Leitstelle`;
+        const mailtoLink = `mailto:${kontakt.email || ""}?subject=${encodeURIComponent(m.betreff || "KPI Maßnahme")}&body=${encodeURIComponent(emailBody)}`;
+
+        return (
+          <div key={i} style={{ background: statusBg[m.status] || "#111827", border: `1px solid ${statusColor[m.status] || "#1f2937"}`, borderRadius: 8, padding: "12px 16px", marginBottom: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: "#f9fafb", marginBottom: 4 }}>{m.name}</div>
+                <div style={{ fontSize: 12, color: "#d1d5db", lineHeight: 1.5 }}>{m.massnahme}</div>
+              </div>
+              <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                <a href={mailtoLink}
+                  style={{ background: "#1d4ed8", color: "#fff", padding: "5px 12px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
+                  📧 Email
+                </a>
+              </div>
+            </div>
+            {!kontakt.email && (
+              <div style={{ marginTop: 6, fontSize: 10, color: "#6b7280" }}>⚠ Keine Email hinterlegt — unter "Kontakte" eintragen</div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function KontakteEditor({ kontakte, onSave, onClose }) {
+  const [local, setLocal] = useState({ ...kontakte });
+  const [neuerName, setNeuerName] = useState("");
+  const [neuerEmail, setNeuerEmail] = useState("");
+
+  const hinzufuegen = () => {
+    if (!neuerName.trim()) return;
+    setLocal(prev => ({ ...prev, [neuerName.trim()]: { email: neuerEmail.trim() } }));
+    setNeuerName(""); setNeuerEmail("");
+  };
+
+  return (
+    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.8)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 12, padding: 24, width: 480, maxHeight: "80vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <span style={{ fontWeight: 700, fontSize: 15, color: "#f9fafb" }}>👥 Techniker Kontakte</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 18 }}>✕</button>
+        </div>
+
+        {Object.entries(local).map(([name, k]) => (
+          <div key={name} style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
+            <div style={{ width: 160, fontSize: 12, color: "#f9fafb", fontWeight: 600 }}>{name}</div>
+            <input
+              value={k.email || ""}
+              onChange={e => setLocal(prev => ({ ...prev, [name]: { ...prev[name], email: e.target.value } }))}
+              placeholder="email@beispiel.de"
+              style={{ flex: 1, background: "#1f2937", border: "1px solid #374151", borderRadius: 5, padding: "5px 10px", color: "#e5e7eb", fontSize: 12 }}
+            />
+            <button onClick={() => { const n = { ...local }; delete n[name]; setLocal(n); }}
+              style={{ background: "none", border: "none", color: "#4b5563", cursor: "pointer", fontSize: 14 }}>✕</button>
+          </div>
+        ))}
+
+        <div style={{ borderTop: "1px solid #1f2937", paddingTop: 16, marginTop: 8 }}>
+          <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>Neuen Techniker hinzufügen:</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input value={neuerName} onChange={e => setNeuerName(e.target.value)} placeholder="Name"
+              style={{ flex: 1, background: "#1f2937", border: "1px solid #374151", borderRadius: 5, padding: "5px 10px", color: "#e5e7eb", fontSize: 12 }} />
+            <input value={neuerEmail} onChange={e => setNeuerEmail(e.target.value)} placeholder="Email"
+              style={{ flex: 1, background: "#1f2937", border: "1px solid #374151", borderRadius: 5, padding: "5px 10px", color: "#e5e7eb", fontSize: 12 }} />
+            <button onClick={hinzufuegen} style={{ background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 5, padding: "5px 12px", cursor: "pointer", fontSize: 12 }}>+</button>
+          </div>
+        </div>
+
+        <button onClick={() => { onSave(local); onClose(); }}
+          style={{ width: "100%", marginTop: 20, background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 8, padding: "12px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+          💾 Speichern
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function KPIAgent() {
   const [gespeichert, setGespeichert] = useState({});
+  const [kontakte, setKontakte] = useState({});
   const [aktiveKategorie, setAktiveKategorie] = useState("alle");
   const [aiAnalysis, setAiAnalysis] = useState("");
+  const [massnahmen, setMassnahmen] = useState([]);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("dashboard");
   const [pending, setPending] = useState(null);
+  const [showKontakte, setShowKontakte] = useState(false);
   const dashboardRef = useRef(null);
 
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) setGespeichert(JSON.parse(saved));
+      const savedK = localStorage.getItem(KONTAKTE_KEY);
+      if (savedK) setKontakte(JSON.parse(savedK));
     } catch(e) {}
   }, []);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(gespeichert));
-    } catch(e) {}
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(gespeichert)); } catch(e) {}
   }, [gespeichert]);
+
+  useEffect(() => {
+    try { localStorage.setItem(KONTAKTE_KEY, JSON.stringify(kontakte)); } catch(e) {}
+  }, [kontakte]);
 
   useEffect(() => {
     if (!loading && pending) {
       setGespeichert(prev => ({ ...prev, [pending.quelle]: pending.rows }));
       setAktiveKategorie(pending.quelle);
-      setAiAnalysis("");
+      setAiAnalysis(""); setMassnahmen([]);
       setActiveTab("dashboard");
-      setPending(null);
-      setError("");
+      setPending(null); setError("");
     }
   }, [loading, pending]);
+
+  // Beim Laden: Kontakte aus Technikernamen befüllen
+  useEffect(() => {
+    const alleNamen = Object.values(gespeichert).flat().map(t => t.name);
+    const unique = [...new Set(alleNamen)];
+    setKontakte(prev => {
+      const neu = { ...prev };
+      unique.forEach(name => { if (!neu[name]) neu[name] = { email: "" }; });
+      return neu;
+    });
+  }, [gespeichert]);
 
   const handleRows = useCallback((rows) => {
     if (!rows.length) { setError("Keine Daten gefunden."); return; }
@@ -361,9 +479,8 @@ export default function KPIAgent() {
     } else {
       setGespeichert(prev => ({ ...prev, [quelle]: rows }));
       setAktiveKategorie(quelle);
-      setAiAnalysis("");
-      setActiveTab("dashboard");
-      setError("");
+      setAiAnalysis(""); setMassnahmen([]);
+      setActiveTab("dashboard"); setError("");
     }
   }, [loading]);
 
@@ -396,7 +513,7 @@ export default function KPIAgent() {
 
   const runAnalysis = async () => {
     if (!angezeigt.length) return;
-    setLoading(true); setError(""); setAiAnalysis("");
+    setLoading(true); setError(""); setAiAnalysis(""); setMassnahmen([]);
     const dataStr = angezeigt.map(t => {
       if (t.quelle === "onetouch") return `${t.name}: A-Ges=${t.a_ges?.toFixed(1) ?? "—"}%, A1=${t.a1?.toFixed(1) ?? "—"}%, AX=${t.ax?.toFixed(1) ?? "—"}%, A0=${t.a0?.toFixed(1) ?? "—"}%, Aufträge=${t.auftraege}`;
       if (t.quelle === "nftq") return `${t.name}: NFTQ-B=${t.nftq_b?.toFixed(2) ?? "—"}%, NFTQ-S=${t.nftq_s?.toFixed(2) ?? "—"}%, NFTQ-M=${t.nftq_m?.toFixed(2) ?? "—"}%, NFTQ-P=${t.nftq_p?.toFixed(2) ?? "—"}%, Aufträge=${t.auftraege}`;
@@ -406,10 +523,12 @@ export default function KPIAgent() {
       const res = await fetch("/api/analyse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1500, system: SYSTEM_PROMPT, messages: [{ role: "user", content: `Analysiere diese Techniker-KPIs:\n\n${dataStr}` }] }),
+        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, system: SYSTEM_PROMPT, messages: [{ role: "user", content: `Analysiere diese Techniker-KPIs:\n\n${dataStr}` }] }),
       });
       const data = await res.json();
-      setAiAnalysis(data.content?.map(b => b.text || "").join("") || "Keine Antwort.");
+      const text = data.content?.map(b => b.text || "").join("") || "";
+      setAiAnalysis(text);
+      setMassnahmen(parseMassnahmen(text));
       setActiveTab("analyse");
     } catch (e) { setError("Fehler bei der KI-Analyse."); }
     finally { setLoading(false); }
@@ -451,8 +570,14 @@ export default function KPIAgent() {
 
   return (
     <div style={{ background: "#0a0e1a", minHeight: "100vh", fontFamily: "system-ui, sans-serif", color: "#e5e7eb" }}>
+      {showKontakte && (
+        <KontakteEditor
+          kontakte={kontakte}
+          onSave={setKontakte}
+          onClose={() => setShowKontakte(false)}
+        />
+      )}
 
-      {/* Header */}
       <div style={{ borderBottom: "1px solid #1f2937", padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#4ade80", boxShadow: "0 0 6px #4ade80", flexShrink: 0 }} />
@@ -462,9 +587,7 @@ export default function KPIAgent() {
           <span style={{ color: "#374151" }}>·</span>
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
             {KATEGORIEN.map(k => {
-              const anzahl = k.id === "alle"
-                ? Object.values(gespeichert).flat().length
-                : (gespeichert[k.id] || []).length;
+              const anzahl = k.id === "alle" ? Object.values(gespeichert).flat().length : (gespeichert[k.id] || []).length;
               const aktiv = aktiveKategorie === k.id;
               const hatDatenInKat = k.id === "alle" ? hatDaten : anzahl > 0;
               return (
@@ -482,26 +605,24 @@ export default function KPIAgent() {
         </div>
 
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button onClick={() => setShowKontakte(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 14px", borderRadius: 6, cursor: "pointer", fontSize: 12 }}>
+            👥 Kontakte
+          </button>
           <label style={{ background: loading ? "#1a2e1a" : "#1f2937", color: loading ? "#4ade80" : "#9ca3af", border: `1px solid ${loading ? "#14532d" : "#374151"}`, padding: "6px 14px", borderRadius: 6, cursor: "pointer", fontSize: 12 }}>
             {loading ? "⏳ Nächste" : "📂 Upload"}
             <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} style={{ display: "none" }} />
           </label>
-          {angezeigt.length > 0 ? (
-            <button onClick={exportPDF} disabled={exporting} style={{ background: "#1f2937", color: "#9ca3af", border: "1px solid #374151", padding: "6px 14px", borderRadius: 6, cursor: "pointer", fontSize: 12 }}>📄 PDF</button>
-          ) : null}
-          {aktiveKategorie !== "alle" && gespeichert[aktiveKategorie] ? (
-            <button onClick={() => loescheKategorie(aktiveKategorie)} style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", padding: "6px 10px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>✕</button>
-          ) : null}
+          {angezeigt.length > 0 ? <button onClick={exportPDF} disabled={exporting} style={{ background: "#1f2937", color: "#9ca3af", border: "1px solid #374151", padding: "6px 14px", borderRadius: 6, cursor: "pointer", fontSize: 12 }}>📄 PDF</button> : null}
+          {aktiveKategorie !== "alle" && gespeichert[aktiveKategorie] ? <button onClick={() => loescheKategorie(aktiveKategorie)} style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", padding: "6px 10px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>✕</button> : null}
         </div>
       </div>
 
       <div ref={dashboardRef} style={{ maxWidth: 720, margin: "0 auto", padding: "24px 20px" }}>
-
         {!hatDaten && (
           <div style={{ textAlign: "center", padding: "60px 20px" }}>
             <div style={{ fontSize: 36, marginBottom: 12 }}>📁</div>
             <div style={{ fontSize: 18, fontWeight: 700, color: "#f9fafb", marginBottom: 8 }}>Telekom-Export hochladen</div>
-            <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 24 }}>Wird automatisch der richtigen Kategorie zugeordnet und gespeichert</div>
+            <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 24 }}>Wird automatisch der richtigen Kategorie zugeordnet</div>
             <label style={{ display: "inline-block", background: "#1d4ed8", color: "#fff", padding: "10px 24px", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
               📂 Datei wählen (.csv / .xlsx)
               <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} style={{ display: "none" }} />
@@ -512,9 +633,7 @@ export default function KPIAgent() {
 
         {hatDaten && angezeigt.length === 0 && (
           <div style={{ textAlign: "center", padding: "40px 20px" }}>
-            <div style={{ fontSize: 14, color: "#6b7280", marginBottom: 16 }}>
-              Noch keine Daten für "{KATEGORIEN.find(k => k.id === aktiveKategorie)?.label}"
-            </div>
+            <div style={{ fontSize: 14, color: "#6b7280", marginBottom: 16 }}>Noch keine Daten für "{KATEGORIEN.find(k => k.id === aktiveKategorie)?.label}"</div>
             <label style={{ display: "inline-block", background: "#1d4ed8", color: "#fff", padding: "10px 24px", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
               📂 Export hochladen
               <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} style={{ display: "none" }} />
@@ -524,7 +643,7 @@ export default function KPIAgent() {
 
         {angezeigt.length > 0 && (
           <>
-            {pending ? <div style={{ fontSize: 11, color: "#4ade80", marginBottom: 8 }}>⏳ Nächste Datei bereit: {pending.quelle}</div> : null}
+            {pending ? <div style={{ fontSize: 11, color: "#4ade80", marginBottom: 8 }}>⏳ Nächste Datei bereit</div> : null}
             {error ? <div style={{ fontSize: 11, color: "#4ade80", marginBottom: 8 }}>{error}</div> : null}
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 20 }}>
@@ -569,7 +688,13 @@ export default function KPIAgent() {
               <div>
                 {!aiAnalysis && !loading ? <div style={{ textAlign: "center", padding: "40px", color: "#6b7280" }}>Noch keine Analyse. Dashboard öffnen und starten.</div> : null}
                 {loading ? <div style={{ textAlign: "center", padding: "40px", color: "#6b7280" }}>⏳ KI analysiert...</div> : null}
-                {aiAnalysis ? <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8, padding: "20px", fontSize: 13, lineHeight: 1.8, color: "#d1d5db" }} dangerouslySetInnerHTML={{ __html: renderMarkdown(aiAnalysis) }} /> : null}
+                {aiAnalysis ? (
+                  <>
+                    <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8, padding: "20px", fontSize: 13, lineHeight: 1.8, color: "#d1d5db" }}
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(aiAnalysis) }} />
+                    <MassnahmenPanel massnahmen={massnahmen} kontakte={kontakte} />
+                  </>
+                ) : null}
               </div>
             )}
           </>
