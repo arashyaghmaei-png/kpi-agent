@@ -6,6 +6,7 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
 const BASELINE_KEY = "fibernc_baselines";
+const ARCHIV_KEY = "fibernc_archiv";
 const DEFAULT_BASELINES = {
   gesamt: { cc_rate: 97.6, termintreue: 97.7, loesungsquote: 96.0, nps: 69.9 },
   fs5335: { cc_rate: 99.6, termintreue: 99.1, loesungsquote: 96.9, nps: 74.4 },
@@ -37,22 +38,10 @@ WICHTIG: Gib am Ende der Analyse einen JSON-Block aus:
 <MASSNAHMEN>
 {
   "massnahmen": [
-    {"name": "Vollständiger Name", "status": "kritisch|warnung|gut", "massnahme": "Konkrete Maßnahme in einem Satz", "betreff": "Email-Betreff"}
+    {"name": "Vollständiger Name", "status": "kritisch|warnung|gut", "massnahme": "Konkrete Maßnahme in einem Satz", "betreff": "Email-Betreff", "kommentar": "Persönliche Bewertung in 1-2 Sätzen direkt an den Techniker gerichtet"}
   ]
 }
-</MASSNAHMEN>
-
-## KPI-Übersicht
-[Techniker, Wert, Baseline-Delta, Status]
-
-## Frühwarnungen
-[Nur kritische Fälle mit Name und Problem]
-
-## Baseline-Vergleich
-[Teamdurchschnitt vs KW13-19]
-
-## Empfehlungen Leitstelle
-[3-5 konkrete Maßnahmen für heute]`;
+</MASSNAHMEN>`;
 
 function parsePercent(val) {
   if (val === undefined || val === null || val === "") return null;
@@ -189,6 +178,39 @@ function getOTStatus(tech) {
   return "gut";
 }
 
+// Score 0-10 pro Techniker berechnen
+function berechneScore(tech, baselines) {
+  const bl = String(tech.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
+  const scores = [];
+  if (tech.quelle === "onetouch") {
+    if (tech.a_ges !== null) scores.push(Math.min(10, (tech.a_ges / OT_BASELINE.a_ges) * 10));
+    if (tech.a1 !== null) scores.push(Math.min(10, (tech.a1 / OT_BASELINE.a1) * 10));
+    if (tech.a0 !== null) scores.push(Math.max(0, 10 - tech.a0));
+  } else if (tech.quelle === "nftq") {
+    const vals = [tech.nftq_b, tech.nftq_s, tech.nftq_m, tech.nftq_p].filter(v => v !== null);
+    vals.forEach(v => scores.push(Math.max(0, 10 - v)));
+  } else {
+    if (tech.cc_rate !== null && bl.cc_rate) scores.push(Math.min(10, (tech.cc_rate / bl.cc_rate) * 10));
+    if (tech.termintreue !== null && bl.termintreue) scores.push(Math.min(10, (tech.termintreue / bl.termintreue) * 10));
+    if (tech.loesungsquote !== null && bl.loesungsquote) scores.push(Math.min(10, (tech.loesungsquote / bl.loesungsquote) * 10));
+    if (tech.nps !== null) {
+      const npsScore = tech.nps < 0 ? 0 : tech.nps < 30 ? 4 : tech.nps < 50 ? 6 : tech.nps < 70 ? 8 : 10;
+      scores.push(npsScore);
+    }
+  }
+  if (!scores.length) return null;
+  return Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10;
+}
+
+function scoreLabel(score) {
+  if (score === null) return { label: "—", color: "#6b7280" };
+  if (score >= 9) return { label: "Ausgezeichnet", color: "#4ade80" };
+  if (score >= 7.5) return { label: "Gut", color: "#86efac" };
+  if (score >= 6) return { label: "Befriedigend", color: "#fbbf24" };
+  if (score >= 4) return { label: "Verbesserungsbedarf", color: "#fb923c" };
+  return { label: "Kritisch", color: "#f87171" };
+}
+
 function parseMassnahmen(text) {
   try {
     const match = text.match(/<MASSNAHMEN>([\s\S]*?)<\/MASSNAHMEN>/);
@@ -200,6 +222,19 @@ function parseMassnahmen(text) {
   } catch(e) {
     return { massnahmen: [], fehler: `JSON-Parsing fehlgeschlagen: ${e.message}` };
   }
+}
+
+function getKW(date = new Date()) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return { kw: Math.ceil((((d - yearStart) / 86400000) + 1) / 7), jahr: d.getUTCFullYear() };
+}
+
+function formatArchivLabel(date = new Date()) {
+  const { kw, jahr } = getKW(date);
+  const datum = date.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+  return `KW${String(kw).padStart(2, "0")} ${jahr} · ${datum}`;
 }
 const STATUS_STYLE = {
   gut:       { bg: "#0f2e1a", color: "#4ade80", label: "GUT" },
@@ -213,13 +248,29 @@ function StatusBadge({ status }) {
   return <span style={{ background: s.bg, color: s.color, padding: "2px 8px", borderRadius: 3, fontSize: 11, fontFamily: "monospace", fontWeight: 700 }}>{s.label}</span>;
 }
 
+function ScoreBadge({ score }) {
+  const { label, color } = scoreLabel(score);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <span style={{ fontSize: 22, fontWeight: 900, color, fontFamily: "monospace" }}>{score !== null ? score.toFixed(1) : "—"}</span>
+      <span style={{ fontSize: 10, color, fontWeight: 700, opacity: 0.85 }}>/10</span>
+      <span style={{ fontSize: 10, color, background: color + "22", padding: "2px 6px", borderRadius: 3, fontWeight: 700 }}>{label}</span>
+    </div>
+  );
+}
+
 function KPIBar({ value, baseline, label }) {
   if (value === null || value === undefined || isNaN(value)) return null;
   const color = value / baseline < 0.85 ? "#f87171" : value / baseline < 0.93 ? "#fbbf24" : "#4ade80";
+  const kpiScore = Math.min(10, (value / baseline) * 10).toFixed(1);
   return (
     <div style={{ marginBottom: 6 }}>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#9ca3af", marginBottom: 2 }}>
-        <span>{label}</span><span style={{ color }}>{value.toFixed(1)}% / {baseline}%</span>
+        <span>{label}</span>
+        <span style={{ display: "flex", gap: 8 }}>
+          <span style={{ color }}>{value.toFixed(1)}% / {baseline}%</span>
+          <span style={{ color, fontWeight: 700 }}>{kpiScore}/10</span>
+        </span>
       </div>
       <div style={{ background: "#1f2937", borderRadius: 2, height: 6, position: "relative" }}>
         <div style={{ width: `${Math.min(100, value)}%`, background: color, height: "100%", borderRadius: 2 }} />
@@ -264,10 +315,14 @@ function OTStackedBar({ tech }) {
   );
 }
 
-function TechCard({ tech, baselines }) {
+function TechCard({ tech, baselines, massnahmeData, kontakte }) {
+  const [expanded, setExpanded] = useState(false);
   const isNFTQ = tech.quelle === "nftq";
   const isOT = tech.quelle === "onetouch";
   const bl = String(tech.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
+  const score = berechneScore(tech, baselines);
+  const { color: scoreColor } = scoreLabel(score);
+
   let worst = "gut";
   if (isOT) worst = getOTStatus(tech);
   else if (isNFTQ) {
@@ -282,54 +337,161 @@ function TechCard({ tech, baselines }) {
     ].filter(Boolean);
     worst = statuses.includes("kritisch") ? "kritisch" : statuses.includes("warnung") ? "warnung" : "gut";
   }
+
   const borderColor = worst === "kritisch" ? "#7f1d1d" : worst === "warnung" ? "#78350f" : "#14532d";
   const quelleLabel = { smsfeedback: "SMS-Feedback", smsfeedbackschalten: "Schalten", nftq: "NFTQ", standard: "Manuell", onetouch: "OneTouch" }[tech.quelle] || "";
   const npsStatus = tech.nps !== null ? getNPSStatus(tech.nps) : null;
   const npsColor = npsStatus === "kritisch" ? "#f87171" : npsStatus === "warnung" ? "#fbbf24" : "#4ade80";
+  const k = kontakte?.[tech.name] || {};
+  const kommentar = massnahmeData?.kommentar || "";
+  const massnahme = massnahmeData?.massnahme || "";
+  const betreff = massnahmeData?.betreff || "KPI Bewertung";
+  const vorname = tech.name.split(" ")[0];
+  const mailBody = `Hallo ${vorname},\n\nhier ist Ihre persönliche KPI-Bewertung:\n\nGesamtscore: ${score !== null ? score.toFixed(1) : "—"}/10\n\n${kommentar ? `Bewertung: ${kommentar}\n\n` : ""}${massnahme ? `Maßnahme: ${massnahme}\n\n` : ""}Bitte bestätigen Sie die Kenntnisnahme.\n\nMit freundlichen Grüßen\nFiberNC Leitstelle`;
+  const mailto = `mailto:${k.email || ""}?subject=${encodeURIComponent(betreff)}&body=${encodeURIComponent(mailBody)}`;
+  const waText = `Hallo ${vorname}, Ihre KPI-Bewertung: ${score !== null ? score.toFixed(1) : "—"}/10. ${kommentar} ${massnahme}`;
+  const waLink = k.mobil ? `https://wa.me/${k.mobil.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(waText)}` : null;
+
   return (
-    <div style={{ background: "#111827", border: `1px solid ${borderColor}`, borderRadius: 8, padding: "16px 18px", marginBottom: 12 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: 15, color: "#f9fafb" }}>{tech.name}</div>
-          <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>
-            {tech.standortUnbekannt ? <span style={{ color: "#fbbf24" }}>⚠ Standort unbekannt → FS5335</span> : `FS${tech.standort}`}
-            {" · "}{tech.auftraege} Aufträge
-            {isOT && tech.tage ? <span style={{ marginLeft: 6 }}>· {tech.tage} Tage</span> : null}
-            <span style={{ marginLeft: 8, color: "#374151", background: "#1f2937", padding: "1px 6px", borderRadius: 3 }}>{quelleLabel}</span>
+    <div style={{ background: "#111827", border: `1px solid ${borderColor}`, borderRadius: 8, marginBottom: 12, overflow: "hidden" }}>
+      {/* Header */}
+      <div style={{ padding: "14px 18px", cursor: "pointer" }} onClick={() => setExpanded(!expanded)}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: "#f9fafb" }}>{tech.name}</div>
+            <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>
+              {tech.standortUnbekannt ? <span style={{ color: "#fbbf24" }}>⚠ Standort unbekannt → FS5335</span> : `FS${tech.standort}`}
+              {" · "}{tech.auftraege} Aufträge
+              {isOT && tech.tage ? <span style={{ marginLeft: 6 }}>· {tech.tage} Tage</span> : null}
+              <span style={{ marginLeft: 8, color: "#374151", background: "#1f2937", padding: "1px 6px", borderRadius: 3 }}>{quelleLabel}</span>
+            </div>
+            {/* Score direkt im Header */}
+            <div style={{ marginTop: 8 }}>
+              <ScoreBadge score={score} />
+            </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+            <StatusBadge status={worst} />
+            <span style={{ fontSize: 10, color: "#4b5563" }}>{expanded ? "▲ zuklappen" : "▼ Details"}</span>
           </div>
         </div>
-        <StatusBadge status={worst} />
+
+        {/* KI-Kommentar Preview */}
+        {kommentar && !expanded && (
+          <div style={{ marginTop: 8, fontSize: 11, color: "#9ca3af", fontStyle: "italic", borderTop: "1px solid #1f2937", paddingTop: 8 }}>
+            💬 {kommentar}
+          </div>
+        )}
       </div>
-      {isOT && (<>
-        <OTStackedBar tech={tech} />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <KPIBar value={tech.a_ges} baseline={OT_BASELINE.a_ges} label="Gesamterfolg" />
-          <KPIBar value={tech.a1} baseline={OT_BASELINE.a1} label="Erstlösung (A1)" />
-        </div>
-        {tech.a0 > 0 ? <div style={{ marginTop: 6, fontSize: 11, color: "#f87171" }}>⚠ A0: {tech.a0.toFixed(1)}%</div> : null}
-      </>)}
-      {isNFTQ && (<>
-        <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>NFTQ Fehlerquoten</div>
-        <NFTQBar value={tech.nftq_b} label="Bereitstellung" />
-        <NFTQBar value={tech.nftq_s} label="Schalten" />
-        <NFTQBar value={tech.nftq_m} label="Montage" />
-        <NFTQBar value={tech.nftq_p} label="Problembehebung" />
-      </>)}
-      {!isOT && !isNFTQ && (<>
-        <KPIBar value={tech.cc_rate} baseline={bl.cc_rate} label="CC-Rate" />
-        <KPIBar value={tech.termintreue} baseline={bl.termintreue} label="Termintreue" />
-        <KPIBar value={tech.loesungsquote} baseline={bl.loesungsquote} label="Lösungsquote" />
-        {tech.nps !== null ? (
-          <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 11, color: "#9ca3af" }}>NPS:</span>
-            <span style={{ color: npsColor, fontWeight: 700, fontSize: 13, fontFamily: "monospace" }}>{tech.nps.toFixed(0)}</span>
-            <span style={{ background: STATUS_STYLE[npsStatus]?.bg, color: npsColor, padding: "1px 6px", borderRadius: 3, fontSize: 10, fontFamily: "monospace", fontWeight: 700 }}>
-              {npsStatus === "kritisch" ? "KRITISCH" : npsStatus === "warnung" ? "WARNUNG" : "GUT"}
-            </span>
-            <span style={{ fontSize: 10, color: "#4b5563" }}>Basis: {String(tech.standort) === "5336" ? baselines.fs5336.nps : baselines.fs5335.nps}</span>
+
+      {/* Aufgeklappt */}
+      {expanded && (
+        <div style={{ borderTop: "1px solid #1f2937", padding: "14px 18px" }}>
+          {isOT && (<>
+            <OTStackedBar tech={tech} />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <KPIBar value={tech.a_ges} baseline={OT_BASELINE.a_ges} label="Gesamterfolg" />
+              <KPIBar value={tech.a1} baseline={OT_BASELINE.a1} label="Erstlösung (A1)" />
+            </div>
+            {tech.a0 > 0 ? <div style={{ marginTop: 6, fontSize: 11, color: "#f87171" }}>⚠ A0: {tech.a0.toFixed(1)}%</div> : null}
+          </>)}
+          {isNFTQ && (<>
+            <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>NFTQ Fehlerquoten</div>
+            <NFTQBar value={tech.nftq_b} label="Bereitstellung" />
+            <NFTQBar value={tech.nftq_s} label="Schalten" />
+            <NFTQBar value={tech.nftq_m} label="Montage" />
+            <NFTQBar value={tech.nftq_p} label="Problembehebung" />
+          </>)}
+          {!isOT && !isNFTQ && (<>
+            <KPIBar value={tech.cc_rate} baseline={bl.cc_rate} label="CC-Rate" />
+            <KPIBar value={tech.termintreue} baseline={bl.termintreue} label="Termintreue" />
+            <KPIBar value={tech.loesungsquote} baseline={bl.loesungsquote} label="Lösungsquote" />
+            {tech.nps !== null ? (
+              <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 11, color: "#9ca3af" }}>NPS:</span>
+                <span style={{ color: npsColor, fontWeight: 700, fontSize: 13, fontFamily: "monospace" }}>{tech.nps.toFixed(0)}</span>
+                <span style={{ background: STATUS_STYLE[npsStatus]?.bg, color: npsColor, padding: "1px 6px", borderRadius: 3, fontSize: 10, fontFamily: "monospace", fontWeight: 700 }}>
+                  {npsStatus === "kritisch" ? "KRITISCH" : npsStatus === "warnung" ? "WARNUNG" : "GUT"}
+                </span>
+                <span style={{ fontSize: 10, color: "#4b5563" }}>Basis: {String(tech.standort) === "5336" ? baselines.fs5336.nps : baselines.fs5335.nps}</span>
+              </div>
+            ) : null}
+          </>)}
+
+          {/* KI-Kommentar */}
+          {kommentar && (
+            <div style={{ marginTop: 12, background: "#0f172a", border: "1px solid #1e3a5f", borderRadius: 6, padding: "10px 12px" }}>
+              <div style={{ fontSize: 10, color: "#60a5fa", fontWeight: 700, marginBottom: 4 }}>💬 PERSÖNLICHE BEWERTUNG</div>
+              <div style={{ fontSize: 12, color: "#d1d5db", lineHeight: 1.6 }}>{kommentar}</div>
+            </div>
+          )}
+          {massnahme && (
+            <div style={{ marginTop: 8, background: "#2e1f00", border: "1px solid #78350f", borderRadius: 6, padding: "10px 12px" }}>
+              <div style={{ fontSize: 10, color: "#fbbf24", fontWeight: 700, marginBottom: 4 }}>📋 MASSNAHME</div>
+              <div style={{ fontSize: 12, color: "#d1d5db", lineHeight: 1.6 }}>{massnahme}</div>
+            </div>
+          )}
+
+          {/* Mail / WA Buttons */}
+          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            <a href={mailto} style={{ flex: 1, background: "#1d4ed8", color: "#fff", padding: "8px", borderRadius: 6, fontSize: 12, textDecoration: "none", fontWeight: 600, textAlign: "center" }}>📧 Bewertung mailen</a>
+            {waLink ? <a href={waLink} target="_blank" rel="noreferrer" style={{ flex: 1, background: "#15803d", color: "#fff", padding: "8px", borderRadius: 6, fontSize: 12, textDecoration: "none", fontWeight: 600, textAlign: "center" }}>💬 WhatsApp</a> : null}
+            {!k.email && !k.mobil && <div style={{ fontSize: 10, color: "#6b7280", alignSelf: "center" }}>⚠ Keine Kontaktdaten</div>}
           </div>
-        ) : null}
-      </>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Firmendashboard — Rangliste aller Techniker
+function FirmenDashboard({ angezeigt, baselines, massnahmenMap }) {
+  const mitScore = angezeigt
+    .map(t => ({ ...t, score: berechneScore(t, baselines) }))
+    .sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+
+  const avgScore = mitScore.filter(t => t.score !== null).reduce((s, t) => s + t.score, 0) / (mitScore.filter(t => t.score !== null).length || 1);
+  const kritisch = mitScore.filter(t => t.score !== null && t.score < 4).length;
+  const ausgezeichnet = mitScore.filter(t => t.score !== null && t.score >= 9).length;
+
+  return (
+    <div style={{ background: "#0f172a", border: "1px solid #1f2937", borderRadius: 10, padding: "20px", marginTop: 20 }}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: "#f9fafb", marginBottom: 16 }}>🏢 Firmendashboard — Rangliste</div>
+
+      {/* Team-KPIs */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 20 }}>
+        {[
+          { label: "Ø Team-Score", value: avgScore.toFixed(1) + "/10", color: scoreLabel(avgScore).color },
+          { label: "Techniker gesamt", value: mitScore.length, color: "#60a5fa" },
+          { label: "Ausgezeichnet", value: ausgezeichnet, color: "#4ade80" },
+          { label: "Kritisch", value: kritisch, color: kritisch > 0 ? "#f87171" : "#4ade80" },
+        ].map(s => (
+          <div key={s.label} style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8, padding: "10px 12px" }}>
+            <div style={{ fontSize: 10, color: "#6b7280", marginBottom: 4 }}>{s.label}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: s.color, fontFamily: "monospace" }}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Rangliste */}
+      {mitScore.map((t, i) => {
+        const { label, color } = scoreLabel(t.score);
+        const m = massnahmenMap?.[t.name];
+        return (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "#111827", border: "1px solid #1f2937", borderRadius: 8, marginBottom: 8 }}>
+            <div style={{ fontSize: 16, fontWeight: 900, color: i < 3 ? ["#fbbf24","#9ca3af","#b45309"][i] : "#374151", width: 24, textAlign: "center" }}>#{i + 1}</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#f9fafb" }}>{t.name}</div>
+              <div style={{ fontSize: 10, color: "#6b7280" }}>FS{t.standort} · {t.auftraege} Aufträge</div>
+              {m?.kommentar && <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 2, fontStyle: "italic" }}>{m.kommentar}</div>}
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 20, fontWeight: 900, color, fontFamily: "monospace" }}>{t.score !== null ? t.score.toFixed(1) : "—"}</div>
+              <div style={{ fontSize: 9, color, fontWeight: 700 }}>{label}</div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -348,39 +510,11 @@ function MassnahmenPanel({ massnahmen, parseError, kontakte }) {
       <div style={{ marginTop: 16, background: "#2e0f0f", border: "1px solid #7f1d1d", borderRadius: 8, padding: "12px 16px" }}>
         <div style={{ fontSize: 12, color: "#f87171", fontWeight: 700 }}>⚠ Maßnahmen konnten nicht geladen werden</div>
         <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>{parseError}</div>
-        <div style={{ fontSize: 10, color: "#6b7280", marginTop: 4 }}>Analyse erneut starten kann helfen.</div>
       </div>
     );
   }
   if (!massnahmen.length) return null;
-  const statusBg = { kritisch: "#2e0f0f", warnung: "#2e1f00", gut: "#0f2e1a" };
-  const statusColor = { kritisch: "#f87171", warnung: "#fbbf24", gut: "#4ade80" };
-  return (
-    <div style={{ marginTop: 24 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: "#f9fafb", marginBottom: 12, borderBottom: "1px solid #1f2937", paddingBottom: 8 }}>📋 Maßnahmen pro Techniker</div>
-      {massnahmen.map((m, i) => {
-        const k = kontakte[m.name] || {};
-        const body = `Hallo ${m.name.split(" ")[0]},\n\nfolgende Maßnahme wurde für Sie festgelegt:\n\n${m.massnahme}\n\nBitte bestätigen Sie die Umsetzung.\n\nMit freundlichen Grüßen\nFiberNC Leitstelle`;
-        const mailto = `mailto:${k.email || ""}?subject=${encodeURIComponent(m.betreff || "KPI Maßnahme")}&body=${encodeURIComponent(body)}`;
-        const waLink = k.mobil ? `https://wa.me/${k.mobil.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(m.massnahme)}` : null;
-        return (
-          <div key={i} style={{ background: statusBg[m.status] || "#111827", border: `1px solid ${statusColor[m.status] || "#1f2937"}`, borderRadius: 8, padding: "12px 16px", marginBottom: 10 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, color: "#f9fafb", marginBottom: 4 }}>{m.name}</div>
-                <div style={{ fontSize: 12, color: "#d1d5db", lineHeight: 1.5 }}>{m.massnahme}</div>
-              </div>
-              <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                <a href={mailto} style={{ background: "#1d4ed8", color: "#fff", padding: "5px 10px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600 }}>📧 Email</a>
-                {waLink ? <a href={waLink} target="_blank" rel="noreferrer" style={{ background: "#15803d", color: "#fff", padding: "5px 10px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600 }}>💬 WA</a> : null}
-              </div>
-            </div>
-            {(!k.email && !k.mobil) && <div style={{ marginTop: 6, fontSize: 10, color: "#6b7280" }}>⚠ Keine Kontaktdaten — unter "👥 Kontakte" eintragen</div>}
-          </div>
-        );
-      })}
-    </div>
-  );
+  return null; // Maßnahmen sind jetzt direkt in TechCard
 }
 
 function AddKPIRow({ onAdd }) {
@@ -402,9 +536,6 @@ function BaselineEditor({ baselines, onSave, onClose }) {
   const kpiLabels = { cc_rate: "CC-Rate %", termintreue: "Termintreue %", loesungsquote: "Lösungsquote %", nps: "NPS" };
   const standortLabels = { gesamt: "Gesamt (KW13-19)", fs5335: "FS5335", fs5336: "FS5336" };
   const inputStyle = { background: "#1f2937", border: "1px solid #374151", borderRadius: 5, padding: "5px 8px", color: "#e5e7eb", fontSize: 12, width: "80px", textAlign: "right" };
-  const update = (standort, kpi, val) => setLocal(prev => ({ ...prev, [standort]: { ...prev[standort], [kpi]: parseFloat(val) || 0 } }));
-  const delKPI = (standort, kpi) => setLocal(prev => { const n = { ...prev, [standort]: { ...prev[standort] } }; delete n[standort][kpi]; return n; });
-  const reset = () => setLocal(JSON.parse(JSON.stringify(DEFAULT_BASELINES)));
   return (
     <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.85)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 12, padding: 24, width: 620, maxHeight: "85vh", overflowY: "auto" }}>
@@ -418,15 +549,15 @@ function BaselineEditor({ baselines, onSave, onClose }) {
             {Object.entries(local[standort] || {}).map(([kpi, wert]) => (
               <div key={kpi} style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 8, alignItems: "center", marginBottom: 8 }}>
                 <div style={{ fontSize: 12, color: "#9ca3af" }}>{kpiLabels[kpi] || kpi}</div>
-                <input type="number" step="0.1" value={wert} onChange={e => update(standort, kpi, e.target.value)} style={inputStyle} />
-                <button onClick={() => delKPI(standort, kpi)} style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", borderRadius: 4, cursor: "pointer", fontSize: 11, padding: "3px 8px" }}>✕</button>
+                <input type="number" step="0.1" value={wert} onChange={e => setLocal(prev => ({ ...prev, [standort]: { ...prev[standort], [kpi]: parseFloat(e.target.value) || 0 } }))} style={inputStyle} />
+                <button onClick={() => setLocal(prev => { const n = { ...prev, [standort]: { ...prev[standort] } }; delete n[standort][kpi]; return n; })} style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", borderRadius: 4, cursor: "pointer", fontSize: 11, padding: "3px 8px" }}>✕</button>
               </div>
             ))}
             <AddKPIRow onAdd={(kpi, val) => setLocal(prev => ({ ...prev, [standort]: { ...prev[standort], [kpi]: val } }))} />
           </div>
         ))}
         <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
-          <button onClick={reset} style={{ flex: 1, background: "#1f2937", color: "#9ca3af", border: "1px solid #374151", borderRadius: 8, padding: "10px", fontSize: 12, cursor: "pointer" }}>🔄 Standard</button>
+          <button onClick={() => setLocal(JSON.parse(JSON.stringify(DEFAULT_BASELINES)))} style={{ flex: 1, background: "#1f2937", color: "#9ca3af", border: "1px solid #374151", borderRadius: 8, padding: "10px", fontSize: 12, cursor: "pointer" }}>🔄 Standard</button>
           <button onClick={() => { onSave(local); onClose(); }} style={{ flex: 2, background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 8, padding: "10px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>💾 Speichern</button>
         </div>
       </div>
@@ -436,105 +567,24 @@ function BaselineEditor({ baselines, onSave, onClose }) {
 
 function TechnikerVerwaltung({ gespeichert, onUpdate, onClose }) {
   const [local, setLocal] = useState(JSON.parse(JSON.stringify(gespeichert)));
-  const kategorieLabels = { smsfeedback: "SMS-Feedback", smsfeedbackschalten: "Schalten", nftq: "NFTQ", standard: "Manuell", onetouch: "OneTouch" };
-  const loescheTech = (kat, idx) => {
-    setLocal(prev => {
-      const n = { ...prev, [kat]: prev[kat].filter((_, i) => i !== idx) };
-      if (!n[kat].length) delete n[kat];
-      return n;
-    });
-  };
-  return (
-    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.85)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 12, padding: 24, width: 660, maxHeight: "88vh", overflowY: "auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <span style={{ fontWeight: 700, fontSize: 15, color: "#f9fafb" }}>🧑‍🔧 Techniker-Einträge verwalten</span>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 18 }}>✕</button>
-        </div>
-        {Object.keys(local).length === 0 && <div style={{ textAlign: "center", padding: "30px", color: "#6b7280" }}>Keine Daten geladen.</div>}
-        {Object.entries(local).map(([kat, rows]) => (
-          <div key={kat} style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#60a5fa", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>
-              {kategorieLabels[kat] || kat} — {rows.length} Einträge
-            </div>
-            {rows.map((t, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#0f172a", border: "1px solid #1f2937", borderRadius: 6, padding: "8px 12px", marginBottom: 6 }}>
-                <div>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "#f9fafb" }}>{t.name}</span>
-                  <span style={{ fontSize: 11, color: "#6b7280", marginLeft: 10 }}>FS{t.standort}</span>
-                  {t.cc_rate !== null && <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 8 }}>CC {t.cc_rate?.toFixed(1)}%</span>}
-                  {t.termintreue !== null && <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 8 }}>TT {t.termintreue?.toFixed(1)}%</span>}
-                  {t.nps !== null && <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 8 }}>NPS {t.nps?.toFixed(0)}</span>}
-                  {t.a1 !== null && <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 8 }}>A1 {t.a1?.toFixed(1)}%</span>}
-                </div>
-                <button onClick={() => loescheTech(kat, i)} style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", borderRadius: 4, cursor: "pointer", fontSize: 11, padding: "3px 10px", flexShrink: 0 }}>✕ Löschen</button>
-              </div>
-            ))}
-          </div>
-        ))}
-        <button onClick={() => { onUpdate(local); onClose(); }} style={{ width: "100%", marginTop: 8, background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 8, padding: "12px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>💾 Änderungen speichern</button>
-      </div>
-    </div>
-  );
-}
+  const kategorieLabels = { smsfeedback: "SMS-Feedback", smsfeedbackschalten: "Schalten", nftq: "NFTQ", standard: "
 
-function KontakteEditor({ kontakte, onSave, onClose }) {
-  const [local, setLocal] = useState({ ...kontakte });
-  const [neuerName, setNeuerName] = useState("");
-  const [neuerEmail, setNeuerEmail] = useState("");
-  const [neuerMobil, setNeuerMobil] = useState("");
-  const hinzufuegen = () => {
-    if (!neuerName.trim()) return;
-    setLocal(prev => ({ ...prev, [neuerName.trim()]: { email: neuerEmail.trim(), mobil: neuerMobil.trim() } }));
-    setNeuerName(""); setNeuerEmail(""); setNeuerMobil("");
-  };
-  const inputStyle = { background: "#1f2937", border: "1px solid #374151", borderRadius: 5, padding: "5px 8px", color: "#e5e7eb", fontSize: 12, width: "100%" };
-  return (
-    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.85)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 12, padding: 24, width: 580, maxHeight: "85vh", overflowY: "auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <span style={{ fontWeight: 700, fontSize: 15, color: "#f9fafb" }}>👥 Techniker Stammdaten</span>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 18 }}>✕</button>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "150px 1fr 130px 28px", gap: 8, marginBottom: 8, padding: "0 0 8px", borderBottom: "1px solid #1f2937" }}>
-          <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase" }}>Name</div>
-          <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase" }}>Email</div>
-          <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase" }}>Mobil</div>
-          <div />
-        </div>
-        {Object.entries(local).map(([name, k]) => (
-          <div key={name} style={{ display: "grid", gridTemplateColumns: "150px 1fr 130px 28px", gap: 8, marginBottom: 8, alignItems: "center" }}>
-            <div style={{ fontSize: 12, color: "#f9fafb", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={name}>{name}</div>
-            <input value={k.email || ""} onChange={e => setLocal(prev => ({ ...prev, [name]: { ...prev[name], email: e.target.value } }))} placeholder="email@beispiel.de" style={inputStyle} />
-            <input value={k.mobil || ""} onChange={e => setLocal(prev => ({ ...prev, [name]: { ...prev[name], mobil: e.target.value } }))} placeholder="+4915..." style={inputStyle} />
-            <button onClick={() => { const n = { ...local }; delete n[name]; setLocal(n); }} style={{ background: "none", border: "none", color: "#4b5563", cursor: "pointer", fontSize: 16, padding: 0 }}>✕</button>
-          </div>
-        ))}
-        <div style={{ borderTop: "1px solid #1f2937", paddingTop: 16, marginTop: 8 }}>
-          <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>➕ Neuen Techniker hinzufügen:</div>
-          <div style={{ display: "grid", gridTemplateColumns: "150px 1fr 130px 40px", gap: 8 }}>
-            <input value={neuerName} onChange={e => setNeuerName(e.target.value)} placeholder="Vor- Nachname" style={inputStyle} onKeyDown={e => e.key === "Enter" && hinzufuegen()} />
-            <input value={neuerEmail} onChange={e => setNeuerEmail(e.target.value)} placeholder="email@beispiel.de" style={inputStyle} onKeyDown={e => e.key === "Enter" && hinzufuegen()} />
-            <input value={neuerMobil} onChange={e => setNeuerMobil(e.target.value)} placeholder="+4915..." style={inputStyle} onKeyDown={e => e.key === "Enter" && hinzufuegen()} />
-            <button onClick={hinzufuegen} style={{ background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 5, cursor: "pointer", fontSize: 16, fontWeight: 700 }}>+</button>
-          </div>
-        </div>
-        <button onClick={() => { onSave(local); onClose(); }} style={{ width: "100%", marginTop: 20, background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 8, padding: "12px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>💾 Speichern</button>
-      </div>
-    </div>
-  );
-}
 export default function KPIAgent() {
   const [gespeichert, setGespeichert] = useState({});
   const [kontakte, setKontakte] = useState({});
   const [baselines, setBaselines] = useState(() => {
     try { const s = localStorage.getItem(BASELINE_KEY); return s ? JSON.parse(s) : DEFAULT_BASELINES; } catch(e) { return DEFAULT_BASELINES; }
   });
+  const [archiv, setArchiv] = useState(() => {
+    try { const s = localStorage.getItem(ARCHIV_KEY); return s ? JSON.parse(s) : []; } catch(e) { return []; }
+  });
   const [aktiveKategorie, setAktiveKategorie] = useState("alle");
   const [aiAnalysis, setAiAnalysis] = useState("");
   const [massnahmen, setMassnahmen] = useState([]);
   const [massnahmenFehler, setMassnahmenFehler] = useState(null);
+  const [techBewertungen, setTechBewertungen] = useState({});
   const [loading, setLoading] = useState(false);
+  const [bewertungLoading, setBewertungLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -542,6 +592,8 @@ export default function KPIAgent() {
   const [showKontakte, setShowKontakte] = useState(false);
   const [showBaseline, setShowBaseline] = useState(false);
   const [showTechVerwaltung, setShowTechVerwaltung] = useState(false);
+  const [showArchiv, setShowArchiv] = useState(false);
+  const [showFirmendashboard, setShowFirmendashboard] = useState(false);
   const dashboardRef = useRef(null);
 
   useEffect(() => {
@@ -556,12 +608,13 @@ export default function KPIAgent() {
   useEffect(() => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(gespeichert)); } catch(e) {} }, [gespeichert]);
   useEffect(() => { try { localStorage.setItem(KONTAKTE_KEY, JSON.stringify(kontakte)); } catch(e) {} }, [kontakte]);
   useEffect(() => { try { localStorage.setItem(BASELINE_KEY, JSON.stringify(baselines)); } catch(e) {} }, [baselines]);
+  useEffect(() => { try { localStorage.setItem(ARCHIV_KEY, JSON.stringify(archiv)); } catch(e) {} }, [archiv]);
 
   useEffect(() => {
     if (!loading && pending) {
       setGespeichert(prev => ({ ...prev, [pending.quelle]: pending.rows }));
       setAktiveKategorie(pending.quelle);
-      setAiAnalysis(""); setMassnahmen([]); setMassnahmenFehler(null);
+      setAiAnalysis(""); setMassnahmen([]); setMassnahmenFehler(null); setTechBewertungen({});
       setActiveTab("dashboard");
       setPending(null); setError("");
     }
@@ -587,7 +640,7 @@ export default function KPIAgent() {
     } else {
       setGespeichert(prev => ({ ...prev, [quelle]: rows }));
       setAktiveKategorie(quelle);
-      setAiAnalysis(""); setMassnahmen([]); setMassnahmenFehler(null);
+      setAiAnalysis(""); setMassnahmen([]); setMassnahmenFehler(null); setTechBewertungen({});
       setActiveTab("dashboard"); setError("");
     }
   }, [loading]);
@@ -613,11 +666,74 @@ export default function KPIAgent() {
     }
   }, [processXLSX, handleRows]);
 
+  // Deduplizierte Ansicht
   const angezeigt = aktiveKategorie === "alle"
-    ? Object.values(gespeichert).flat()
+    ? Object.values(gespeichert).flat().filter((t, idx, arr) =>
+        arr.findLastIndex(x => x.name === t.name) === idx
+      )
     : (gespeichert[aktiveKategorie] || []);
 
   const hatDaten = Object.keys(gespeichert).length > 0;
+
+  // Score berechnen 0-10
+  const berechneTechScore = (tech) => {
+    const bl = String(tech.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
+    const scores = [];
+    if (tech.cc_rate !== null) scores.push(Math.min(10, (tech.cc_rate / bl.cc_rate) * 10));
+    if (tech.termintreue !== null) scores.push(Math.min(10, (tech.termintreue / bl.termintreue) * 10));
+    if (tech.loesungsquote !== null) scores.push(Math.min(10, (tech.loesungsquote / bl.loesungsquote) * 10));
+    if (tech.nps !== null) scores.push(Math.min(10, Math.max(0, (tech.nps + 100) / 20)));
+    if (tech.a1 !== null) scores.push(Math.min(10, (tech.a1 / 60) * 10));
+    if (tech.a_ges !== null) scores.push(Math.min(10, (tech.a_ges / 95) * 10));
+    if (!scores.length) return null;
+    return Math.round((scores.reduce((s, v) => s + v, 0) / scores.length) * 10) / 10;
+  };
+
+  const scoreColor = (s) => s >= 8.5 ? "#4ade80" : s >= 7 ? "#fbbf24" : "#f87171";
+  const scoreLabel = (s) => s >= 9 ? "Ausgezeichnet" : s >= 8 ? "Gut" : s >= 7 ? "Befriedigend" : s >= 5 ? "Verbesserungsbedarf" : "Kritisch";
+
+  // Einzel-Bewertung per KI
+  const bewerteEinzelTechniker = async (tech) => {
+    const bl = String(tech.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
+    const score = berechneTechScore(tech);
+    const kpiText = tech.quelle === "onetouch"
+      ? `A-Gesamt=${tech.a_ges?.toFixed(1) ?? "—"}%, A1=${tech.a1?.toFixed(1) ?? "—"}%, AX=${tech.ax?.toFixed(1) ?? "—"}%, A0=${tech.a0?.toFixed(1) ?? "—"}%`
+      : `CC=${tech.cc_rate?.toFixed(1) ?? "—"}% (Basis ${bl.cc_rate}%), Termintreue=${tech.termintreue?.toFixed(1) ?? "—"}% (Basis ${bl.termintreue}%), Lösungsquote=${tech.loesungsquote?.toFixed(1) ?? "—"}%, NPS=${tech.nps?.toFixed(0) ?? "—"}`;
+
+    setBewertungLoading(prev => ({ ...prev, [tech.name]: true }));
+    try {
+      const res = await fetch("/api/analyse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 500,
+          system: `Du bist KPI-Bewerter für Telekom-Techniker. Bewerte präzise und direkt auf Deutsch. Gib NUR JSON zurück:
+{"kommentar": "1-2 Sätze persönliche Bewertung mit Namen", "staerken": ["max 2 Stärken"], "schwaechen": ["max 2 Schwächen"], "massnahme": "Eine konkrete Maßnahme"}`,
+          messages: [{ role: "user", content: `Techniker: ${tech.name}, Score: ${score}/10, KPIs: ${kpiText}, Aufträge: ${tech.auftraege}` }]
+        }),
+      });
+      const data = await res.json();
+      const text = data.content?.map(b => b.text || "").join("") || "";
+      const clean = text.replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(clean);
+      setTechBewertungen(prev => ({ ...prev, [tech.name]: { ...parsed, score } }));
+    } catch(e) {
+      setTechBewertungen(prev => ({ ...prev, [tech.name]: { kommentar: "Bewertung fehlgeschlagen.", score } }));
+    } finally {
+      setBewertungLoading(prev => ({ ...prev, [tech.name]: false }));
+    }
+  };
+
+  // Alle Techniker auf einmal bewerten
+  const bewerteAlle = async () => {
+    setBewertungLoading(true);
+    for (const tech of angezeigt) {
+      await bewerteEinzelTechniker(tech);
+    }
+    setBewertungLoading(false);
+    setActiveTab("firmendashboard");
+  };
 
   const runAnalysis = async () => {
     if (!angezeigt.length) return;
@@ -643,6 +759,42 @@ export default function KPIAgent() {
     } catch (e) { setError("Fehler bei der KI-Analyse."); }
     finally { setLoading(false); }
   };
+
+  const archivieren = useCallback((analyseText = "") => {
+    if (!hatDaten) return;
+    const now = new Date();
+    const datatenMitStatus = {};
+    Object.entries(gespeichert).forEach(([kat, techs]) => {
+      datatenMitStatus[kat] = techs.map(t => {
+        const bl = String(t.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
+        let status = "gut";
+        if (t.quelle === "onetouch") status = getOTStatus(t);
+        else if (t.quelle === "nftq") {
+          const vals = [t.nftq_b, t.nftq_s, t.nftq_m, t.nftq_p].filter(Boolean);
+          status = vals.some(v => v > 10) ? "kritisch" : vals.some(v => v > 5) ? "warnung" : "gut";
+        } else {
+          const statuses = [
+            t.cc_rate !== null ? getStatus(t.cc_rate, bl.cc_rate) : null,
+            t.termintreue !== null ? getStatus(t.termintreue, bl.termintreue) : null,
+            t.nps !== null ? getNPSStatus(t.nps) : null,
+          ].filter(Boolean);
+          status = statuses.includes("kritisch") ? "kritisch" : statuses.includes("warnung") ? "warnung" : "gut";
+        }
+        const score = berechneTechScore(t);
+        return { ...t, _status: status, _score: score };
+      });
+    });
+    setArchiv(prev => [...prev, {
+      label: formatArchivLabel(now),
+      datum: now.toISOString(),
+      daten: datatenMitStatus,
+      analyse: analyseText || aiAnalysis || "",
+      bewertungen: techBewertungen,
+    }]);
+    setGespeichert({});
+    setAktiveKategorie("alle");
+    setAiAnalysis(""); setMassnahmen([]); setMassnahmenFehler(null); setTechBewertungen({});
+  }, [gespeichert, baselines, aiAnalysis, hatDaten, techBewertungen]);
 
   const exportPDF = async () => {
     setExporting(true);
@@ -678,13 +830,129 @@ export default function KPIAgent() {
   };
 
   const isOTView = aktiveKategorie === "onetouch";
+  const teamAvgScore = () => {
+    const scores = angezeigt.map(t => berechneTechScore(t)).filter(s => s !== null);
+    return scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : "—";
+  };
+
+  // Firmendashboard Tab
+  const FirmendashboardTab = () => {
+    const sorted = [...angezeigt].sort((a, b) => (berechneTechScore(b) || 0) - (berechneTechScore(a) || 0));
+    return (
+      <div>
+        {/* Team-Übersicht */}
+        <div style={{ background: "#0f172a", border: "1px solid #1f2937", borderRadius: 8, padding: "16px", marginBottom: 20 }}>
+          <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>Team-Übersicht</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+            {[
+              { label: "Ø Team-Score", value: `${teamAvgScore()}/10`, color: scoreColor(parseFloat(teamAvgScore())) },
+              { label: "Kritisch", value: criticalCount, color: criticalCount > 0 ? "#f87171" : "#4ade80" },
+              { label: "Bewertet", value: `${Object.keys(techBewertungen).length}/${angezeigt.length}`, color: "#60a5fa" },
+            ].map(s => (
+              <div key={s.label} style={{ background: "#111827", borderRadius: 6, padding: "10px 12px" }}>
+                <div style={{ fontSize: 10, color: "#6b7280", marginBottom: 4 }}>{s.label}</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: s.color, fontFamily: "monospace" }}>{s.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Rangliste */}
+        <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>Rangliste</div>
+        {sorted.map((tech, i) => {
+          const score = berechneTechScore(tech);
+          const bew = techBewertungen[tech.name];
+          const isLoadingThis = bewertungLoading[tech.name];
+          const k = kontakte[tech.name] || {};
+          const mailBody = bew
+            ? `Hallo ${tech.name.split(" ")[0]},\n\nhier ist Ihre persönliche KPI-Bewertung:\n\nScore: ${score}/10 — ${scoreLabel(score)}\n\n${bew.kommentar}\n\n${bew.staerken?.length ? `Stärken:\n${bew.staerken.map(s => `• ${s}`).join("\n")}\n\n` : ""}${bew.schwaechen?.length ? `Verbesserungsbedarf:\n${bew.schwaechen.map(s => `• ${s}`).join("\n")}\n\n` : ""}Maßnahme: ${bew.massnahme || ""}\n\nMit freundlichen Grüßen\nFiberNC Leitstelle`
+            : "";
+          const mailto = `mailto:${k.email || ""}?subject=${encodeURIComponent(`KPI-Bewertung ${tech.name}`)}&body=${encodeURIComponent(mailBody)}`;
+
+          return (
+            <div key={tech.name} style={{ background: "#111827", border: `1px solid ${score >= 8 ? "#14532d" : score >= 6 ? "#78350f" : "#7f1d1d"}`, borderRadius: 8, padding: "14px 16px", marginBottom: 10 }}>
+              {/* Header */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: scoreColor(score), fontFamily: "monospace", minWidth: 28 }}>#{i + 1}</div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: "#f9fafb" }}>{tech.name}</div>
+                    <div style={{ fontSize: 11, color: "#6b7280" }}>FS{tech.standort} · {tech.auftraege} Aufträge</div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {score !== null && (
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{ fontSize: 22, fontWeight: 700, color: scoreColor(score), fontFamily: "monospace" }}>{score}</div>
+                      <div style={{ fontSize: 9, color: scoreColor(score) }}>/10</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* KPI Zeile */}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                {tech.cc_rate !== null && <span style={{ fontSize: 10, background: "#1f2937", color: "#9ca3af", padding: "2px 8px", borderRadius: 3 }}>CC {tech.cc_rate.toFixed(1)}%</span>}
+                {tech.termintreue !== null && <span style={{ fontSize: 10, background: "#1f2937", color: "#9ca3af", padding: "2px 8px", borderRadius: 3 }}>TT {tech.termintreue.toFixed(1)}%</span>}
+                {tech.loesungsquote !== null && <span style={{ fontSize: 10, background: "#1f2937", color: "#9ca3af", padding: "2px 8px", borderRadius: 3 }}>LQ {tech.loesungsquote.toFixed(1)}%</span>}
+                {tech.nps !== null && <span style={{ fontSize: 10, background: "#1f2937", color: "#9ca3af", padding: "2px 8px", borderRadius: 3 }}>NPS {tech.nps.toFixed(0)}</span>}
+                {tech.a1 !== null && <span style={{ fontSize: 10, background: "#1f2937", color: "#9ca3af", padding: "2px 8px", borderRadius: 3 }}>A1 {tech.a1.toFixed(1)}%</span>}
+                {tech.a0 !== null && tech.a0 > 0 && <span style={{ fontSize: 10, background: "#2e0f0f", color: "#f87171", padding: "2px 8px", borderRadius: 3 }}>A0 {tech.a0.toFixed(1)}%</span>}
+              </div>
+
+              {/* KI-Bewertung */}
+              {isLoadingThis && <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>⏳ KI bewertet...</div>}
+              {bew && !isLoadingThis && (
+                <div style={{ background: "#0f172a", borderRadius: 6, padding: "10px 12px", marginBottom: 10 }}>
+                  <div style={{ fontSize: 12, color: "#d1d5db", lineHeight: 1.6, marginBottom: 8 }}>{bew.kommentar}</div>
+                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                    {bew.staerken?.map((s, si) => <span key={si} style={{ fontSize: 10, color: "#4ade80" }}>✓ {s}</span>)}
+                    {bew.schwaechen?.map((s, si) => <span key={si} style={{ fontSize: 10, color: "#f87171" }}>✗ {s}</span>)}
+                  </div>
+                  {bew.massnahme && <div style={{ fontSize: 11, color: "#fbbf24", marginTop: 6 }}>→ {bew.massnahme}</div>}
+                </div>
+              )}
+
+              {/* Aktionen */}
+              <div style={{ display: "flex", gap: 6 }}>
+                {!bew && !isLoadingThis && (
+                  <button onClick={() => bewerteEinzelTechniker(tech)}
+                    style={{ background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 5, cursor: "pointer", fontSize: 11, padding: "5px 12px", fontWeight: 600 }}>
+                    🤖 Bewerten
+                  </button>
+                )}
+                {bew && k.email && (
+                  <a href={mailto}
+                    style={{ background: "#1d4ed8", color: "#fff", padding: "5px 12px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600 }}>
+                    📧 Mail senden
+                  </a>
+                )}
+                {bew && !k.email && (
+                  <span style={{ fontSize: 10, color: "#6b7280" }}>⚠ Keine Email — unter 👥 Kontakte eintragen</span>
+                )}
+                {k.mobil && bew && (
+                  <a href={`https://wa.me/${k.mobil.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(`Hallo ${tech.name.split(" ")[0]}, Ihr KPI-Score: ${score}/10 — ${scoreLabel(score)}. ${bew?.massnahme || ""}`)}`}
+                    target="_blank" rel="noreferrer"
+                    style={{ background: "#15803d", color: "#fff", padding: "5px 12px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600 }}>
+                    💬 WhatsApp
+                  </a>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
 
   return (
     <div style={{ background: "#0a0e1a", minHeight: "100vh", fontFamily: "system-ui, sans-serif", color: "#e5e7eb" }}>
       {showKontakte && <KontakteEditor kontakte={kontakte} onSave={setKontakte} onClose={() => setShowKontakte(false)} />}
       {showBaseline && <BaselineEditor baselines={baselines} onSave={setBaselines} onClose={() => setShowBaseline(false)} />}
       {showTechVerwaltung && <TechnikerVerwaltung gespeichert={gespeichert} onUpdate={setGespeichert} onClose={() => setShowTechVerwaltung(false)} />}
+      {showArchiv && <ArchivPanel archiv={archiv} onDelete={(idx) => setArchiv(prev => prev.filter((_, i) => i !== idx))} onClose={() => setShowArchiv(false)} />}
 
+      {/* Header */}
       <div style={{ borderBottom: "1px solid #1f2937", padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#4ade80", boxShadow: "0 0 6px #4ade80", flexShrink: 0 }} />
@@ -694,7 +962,7 @@ export default function KPIAgent() {
           <span style={{ color: "#374151" }}>·</span>
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
             {KATEGORIEN.map(k => {
-              const anzahl = k.id === "alle" ? Object.values(gespeichert).flat().length : (gespeichert[k.id] || []).length;
+              const anzahl = k.id === "alle" ? Object.values(gespeichert).flat().filter((t, idx, arr) => arr.findLastIndex(x => x.name === t.name) === idx).length : (gespeichert[k.id] || []).length;
               const aktiv = aktiveKategorie === k.id;
               const hatDatenInKat = k.id === "alle" ? hatDaten : anzahl > 0;
               return (
@@ -714,12 +982,15 @@ export default function KPIAgent() {
           <button onClick={() => setShowKontakte(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>👥 Kontakte</button>
           <button onClick={() => setShowBaseline(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>📊 Baselines</button>
           <button onClick={() => setShowTechVerwaltung(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>🧑‍🔧 Techniker</button>
+          <button onClick={() => setShowArchiv(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>🗂 Archiv{archiv.length > 0 ? ` (${archiv.length})` : ""}</button>
           <label style={{ background: loading ? "#1a2e1a" : "#1f2937", color: loading ? "#4ade80" : "#9ca3af", border: `1px solid ${loading ? "#14532d" : "#374151"}`, padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>
             {loading ? "⏳ Nächste" : "📂 Upload"}
             <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} style={{ display: "none" }} />
           </label>
-          {angezeigt.length > 0 ? <button onClick={exportPDF} disabled={exporting} style={{ background: "#1f2937", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>📄 PDF</button> : null}
-          {aktiveKategorie !== "alle" && gespeichert[aktiveKategorie] ? <button onClick={() => loescheKategorie(aktiveKategorie)} style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", padding: "6px 10px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>✕</button> : null}
+          {angezeigt.length > 0 && <button onClick={exportPDF} disabled={exporting} style={{ background: "#1f2937", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>📄 PDF</button>}
+          {aktiveKategorie !== "alle" && gespeichert[aktiveKategorie] && <button onClick={() => loescheKategorie(aktiveKategorie)} style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", padding: "6px 10px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>✕</button>}
+          <button onClick={async () => { await fetch("/api/logout", { method: "POST" }); window.location.href = "/login"; }}
+            style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>🔒 Logout</button>
         </div>
       </div>
 
@@ -736,6 +1007,7 @@ export default function KPIAgent() {
             {error ? <div style={{ marginTop: 16, color: "#4ade80", fontSize: 13 }}>{error}</div> : null}
           </div>
         )}
+
         {hatDaten && angezeigt.length === 0 && (
           <div style={{ textAlign: "center", padding: "40px 20px" }}>
             <div style={{ fontSize: 14, color: "#6b7280", marginBottom: 16 }}>Noch keine Daten für "{KATEGORIEN.find(k => k.id === aktiveKategorie)?.label}"</div>
@@ -745,21 +1017,24 @@ export default function KPIAgent() {
             </label>
           </div>
         )}
+
         {angezeigt.length > 0 && (
           <>
-            {pending ? <div style={{ fontSize: 11, color: "#4ade80", marginBottom: 8 }}>⏳ Nächste Datei bereit</div> : null}
-            {error ? <div style={{ fontSize: 11, color: "#4ade80", marginBottom: 8 }}>{error}</div> : null}
+            {pending && <div style={{ fontSize: 11, color: "#4ade80", marginBottom: 8 }}>⏳ Nächste Datei bereit</div>}
+            {error && <div style={{ fontSize: 11, color: "#4ade80", marginBottom: 8 }}>{error}</div>}
+
+            {/* Statistik-Kacheln */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 20 }}>
               {(isOTView ? [
                 { label: "Techniker", value: angezeigt.length, color: "#60a5fa" },
                 { label: "Kritisch", value: criticalCount, color: criticalCount > 0 ? "#f87171" : "#4ade80" },
                 { label: "Ø A1-Rate", value: avg("a1") !== "—" ? `${avg("a1")}%` : "—", color: "#4ade80" },
-                { label: "Ø A-Gesamt", value: avg("a_ges") !== "—" ? `${avg("a_ges")}%` : "—", color: "#fbbf24" },
+                { label: "Ø Score", value: `${teamAvgScore()}/10`, color: scoreColor(parseFloat(teamAvgScore())) },
               ] : [
                 { label: "Techniker", value: angezeigt.length, color: "#60a5fa" },
                 { label: "Kritisch", value: criticalCount, color: criticalCount > 0 ? "#f87171" : "#4ade80" },
                 { label: "Ø CC-Rate", value: avg("cc_rate") !== "—" ? `${avg("cc_rate")}%` : "—", color: "#fbbf24" },
-                { label: "Ø Termintreue", value: avg("termintreue") !== "—" ? `${avg("termintreue")}%` : "—", color: "#fbbf24" },
+                { label: "Ø Score", value: `${teamAvgScore()}/10`, color: scoreColor(parseFloat(teamAvgScore())) },
               ]).map(s => (
                 <div key={s.label} style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8, padding: "12px 14px" }}>
                   <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 4 }}>{s.label}</div>
@@ -767,34 +1042,57 @@ export default function KPIAgent() {
                 </div>
               ))}
             </div>
+
+            {/* Tabs */}
             <div style={{ display: "flex", marginBottom: 16, borderBottom: "1px solid #1f2937" }}>
-              {[{ id: "dashboard", label: "Dashboard" }, { id: "analyse", label: "KI-Analyse" + (aiAnalysis ? " ✓" : "") }].map(tab => (
+              {[
+                { id: "dashboard", label: "Dashboard" },
+                { id: "firmendashboard", label: "🏢 Firmendashboard" + (Object.keys(techBewertungen).length > 0 ? ` (${Object.keys(techBewertungen).length})` : "") },
+                { id: "analyse", label: "KI-Analyse" + (aiAnalysis ? " ✓" : "") },
+              ].map(tab => (
                 <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                  style={{ background: "none", border: "none", borderBottom: activeTab === tab.id ? "2px solid #3b82f6" : "2px solid transparent", color: activeTab === tab.id ? "#f9fafb" : "#6b7280", padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: activeTab === tab.id ? 600 : 400, marginBottom: -1 }}>
+                  style={{ background: "none", border: "none", borderBottom: activeTab === tab.id ? "2px solid #3b82f6" : "2px solid transparent", color: activeTab === tab.id ? "#f9fafb" : "#6b7280", padding: "8px 16px", cursor: "pointer", fontSize: 12, fontWeight: activeTab === tab.id ? 600 : 400, marginBottom: -1, whiteSpace: "nowrap" }}>
                   {tab.label}
                 </button>
               ))}
             </div>
+
+            {/* Dashboard Tab */}
             {activeTab === "dashboard" && (
               <>
                 <div style={{ marginBottom: 16 }}>{angezeigt.map((t, i) => <TechCard key={i} tech={t} baselines={baselines} />)}</div>
-                <button onClick={runAnalysis} disabled={loading}
-                  style={{ width: "100%", background: loading ? "#1f2937" : "#1d4ed8", color: loading ? "#6b7280" : "#fff", border: "none", borderRadius: 8, padding: "14px", fontSize: 14, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer" }}>
-                  {loading ? "⏳ KI analysiert..." : "🤖 KI-Analyse starten"}
-                </button>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <button onClick={runAnalysis} disabled={loading}
+                    style={{ width: "100%", background: loading ? "#1f2937" : "#1d4ed8", color: loading ? "#6b7280" : "#fff", border: "none", borderRadius: 8, padding: "14px", fontSize: 14, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer" }}>
+                    {loading ? "⏳ KI analysiert..." : "🤖 Team-Analyse starten"}
+                  </button>
+                  <button onClick={bewerteAlle} disabled={bewertungLoading === true}
+                    style={{ width: "100%", background: bewertungLoading === true ? "#1f2937" : "#0f172a", color: bewertungLoading === true ? "#6b7280" : "#60a5fa", border: "1px solid #1e3a5f", borderRadius: 8, padding: "12px", fontSize: 13, fontWeight: 700, cursor: bewertungLoading === true ? "not-allowed" : "pointer" }}>
+                    {bewertungLoading === true ? "⏳ Bewerte Techniker..." : "🏢 Alle bewerten → Firmendashboard"}
+                  </button>
+                  <button onClick={() => archivieren()}
+                    style={{ width: "100%", background: "#0f172a", color: "#6b7280", border: "1px solid #1f2937", borderRadius: 8, padding: "10px", fontSize: 12, cursor: "pointer" }}>
+                    🗂 Archivieren & Dashboard leeren
+                  </button>
+                </div>
               </>
             )}
+
+            {/* Firmendashboard Tab */}
+            {activeTab === "firmendashboard" && <FirmendashboardTab />}
+
+            {/* KI-Analyse Tab */}
             {activeTab === "analyse" && (
               <div>
-                {!aiAnalysis && !loading ? <div style={{ textAlign: "center", padding: "40px", color: "#6b7280" }}>Noch keine Analyse. Dashboard öffnen und starten.</div> : null}
-                {loading ? <div style={{ textAlign: "center", padding: "40px", color: "#6b7280" }}>⏳ KI analysiert...</div> : null}
-                {aiAnalysis ? (
+                {!aiAnalysis && !loading && <div style={{ textAlign: "center", padding: "40px", color: "#6b7280" }}>Noch keine Analyse. Dashboard öffnen und starten.</div>}
+                {loading && <div style={{ textAlign: "center", padding: "40px", color: "#6b7280" }}>⏳ KI analysiert...</div>}
+                {aiAnalysis && (
                   <>
                     <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8, padding: "20px", fontSize: 13, lineHeight: 1.8, color: "#d1d5db" }}
                       dangerouslySetInnerHTML={{ __html: renderMarkdown(aiAnalysis) }} />
                     <MassnahmenPanel massnahmen={massnahmen} parseError={massnahmenFehler} kontakte={kontakte} />
                   </>
-                ) : null}
+                )}
               </div>
             )}
           </>
@@ -802,4 +1100,4 @@ export default function KPIAgent() {
       </div>
     </div>
   );
-}
+}                           
