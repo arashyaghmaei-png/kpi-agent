@@ -824,20 +824,31 @@ export default function KPIAgent() {
       const alleMassnahmen = angezeigt.map(t => {
         const bl = String(t.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
         const statusList = [];
+        // Standard KPIs
         if (t.cc_rate !== null) statusList.push(getStatus(t.cc_rate, bl.cc_rate));
         if (t.termintreue !== null) statusList.push(getStatus(t.termintreue, bl.termintreue));
         if (t.loesungsquote !== null) statusList.push(getStatus(t.loesungsquote, bl.loesungsquote));
         if (t.nps !== null) statusList.push(getNPSStatus(t.nps));
+        // OneTouch KPIs
         if (t.a1 !== null) statusList.push(t.a1 >= 60 ? "gut" : t.a1 >= 45 ? "warnung" : "kritisch");
         if (t.a0 !== null && t.a0 > 10) statusList.push("kritisch");
+        // NFTQ KPIs
+        if (t.nftq_b !== null) statusList.push(t.nftq_b <= 4 ? "gut" : t.nftq_b <= 8 ? "warnung" : "kritisch");
+        if (t.nftq_s !== null) statusList.push(t.nftq_s <= 4 ? "gut" : t.nftq_s <= 8 ? "warnung" : "kritisch");
+        if (t.nftq_m !== null) statusList.push(t.nftq_m <= 4 ? "gut" : t.nftq_m <= 8 ? "warnung" : "kritisch");
+        if (t.nftq_p !== null) statusList.push(t.nftq_p <= 4 ? "gut" : t.nftq_p <= 8 ? "warnung" : "kritisch");
         const worst = statusList.length === 0 ? "gut" : statusList.includes("kritisch") ? "kritisch" : statusList.includes("warnung") ? "warnung" : "gut";
-        const lobText = t.nps !== null && t.nps >= 50
-          ? "Ausgezeichnete Leistung! NPS " + t.nps.toFixed(0) + " weit über Durchschnitt — Sie sind ein Vorbild im Team!"
-          : t.cc_rate !== null && t.cc_rate >= 99
-          ? "Sehr gute CC-Rate " + t.cc_rate.toFixed(1) + "% — hervorragende Arbeit, weiter so!"
+        // Personalisierter Lob-Text
+        const nftqGut = t.quelle === "nftq" && worst === "gut";
+        const lobText = nftqGut
+          ? "Alle NFTQ-Werte im Zielbereich (≤4%) — ausgezeichnete Qualitätsarbeit, weiter so!"
+          : t.nps !== null && t.nps >= 50
+          ? "Ausgezeichnete Leistung! NPS " + t.nps.toFixed(0) + " weit über Zielwert 50 — Sie sind ein Vorbild im Team!"
+          : t.cc_rate !== null && t.cc_rate >= 96
+          ? "Sehr gute CC-Rate " + t.cc_rate.toFixed(1) + "% — Zielwert 96% erreicht, hervorragende Arbeit!"
           : t.a1 !== null && t.a1 >= 60
-          ? "Erstlösungsquote " + t.a1.toFixed(1) + "% — ausgezeichnete Effizienz beim ersten Besuch!"
-          : "Hervorragende Leistung! Alle KPI-Werte im grünen Bereich — weiter so!";
+          ? "Erstlösungsquote " + t.a1.toFixed(1) + "% — Zielwert 60% erreicht, ausgezeichnete Effizienz!"
+          : "Hervorragende Leistung! Alle KPI-Werte im Zielbereich — weiter so!";
         return {
           name: t.name,
           status: worst,
