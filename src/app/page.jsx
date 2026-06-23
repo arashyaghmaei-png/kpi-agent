@@ -821,7 +821,6 @@ export default function KPIAgent() {
       setAiAnalysis(text);
 
       // Automatisch Massnahmen fuer jeden Techniker generieren
-      console.log("MASSNAHMEN DEBUG - angezeigt:", angezeigt.map(t => ({name: t.name, quelle: t.quelle, nps: t.nps, cc: t.cc_rate, nftq_b: t.nftq_b, nftq_s: t.nftq_s, nftq_m: t.nftq_m, nftq_p: t.nftq_p})));
       const alleMassnahmen = angezeigt.map(t => {
         const bl = String(t.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
         const statusList = [];
@@ -844,11 +843,11 @@ export default function KPIAgent() {
         const lobText = nftqGut
           ? "Alle NFTQ-Werte im Zielbereich (≤4%) — ausgezeichnete Qualitätsarbeit, weiter so!"
           : t.nps !== null && t.nps >= 50
-          ? "Ausgezeichnete Leistung! NPS " + t.nps.toFixed(0) + " weit über Zielwert 50 — Sie sind ein Vorbild im Team!"
+          ? "Ausgezeichnete Leistung! NPS " + (t.nps || 0).toFixed(0) + " weit über Zielwert 50 — Sie sind ein Vorbild im Team!"
           : t.cc_rate !== null && t.cc_rate >= 96
-          ? "Sehr gute CC-Rate " + t.cc_rate.toFixed(1) + "% — Zielwert 96% erreicht, hervorragende Arbeit!"
+          ? "Sehr gute CC-Rate " + (t.cc_rate || 0).toFixed(1) + "% — Zielwert 96% erreicht, hervorragende Arbeit!"
           : t.a1 !== null && t.a1 >= 60
-          ? "Erstlösungsquote " + t.a1.toFixed(1) + "% — Zielwert 60% erreicht, ausgezeichnete Effizienz!"
+          ? "Erstlösungsquote " + (t.a1 || 0).toFixed(1) + "% — Zielwert 60% erreicht, ausgezeichnete Effizienz!"
           : "Hervorragende Leistung! Alle KPI-Werte im Zielbereich — weiter so!";
         return {
           name: t.name,
