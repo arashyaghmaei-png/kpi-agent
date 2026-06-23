@@ -31,7 +31,13 @@ FS5335: CC=${bl.fs5335.cc_rate}% | Termintreue=${bl.fs5335.termintreue}% | Lösu
 FS5336: CC=${bl.fs5336.cc_rate}% | Termintreue=${bl.fs5336.termintreue}% | Lösungsquote=${bl.fs5336.loesungsquote}%
 KW20 schlechteste Woche (NPS 26, Termintreue 85,7%). KW23-24 FS5336 kritisch: CC 70%, SearchCall 37%.
 OneTouch: A1=erster Besuch erledigt (Ziel >=60%), AX=Abbruch, A0=nicht erledigt (kritisch >10%).
-Aufgabe: Techniker-KPIs bewerten, Frühwarnungen bei >=7% Abweichung, Leitstellen-Empfehlungen.
+Aufgabe: Techniker-KPIs bewerten, Leitstellen-Empfehlungen.
+Echte Telekom-Zielwerte (aus Maßnahmenplan):
+- CC-Rate (Service Calls): Ziel >= 96%, Warnung < 96%, Kritisch < 85%
+- Termintreue: Ziel >= 97%, Warnung < 97%, Kritisch < 85%
+- NPS: Ziel >= 50, Warnung 20-49, Kritisch < 20
+- NFTQ: Ziel <= 4%, Warnung 4-8%, Kritisch > 8%
+Frühwarnung bei Abweichung >= 7% vom Zielwert.
 Antworte auf Deutsch, direkt und operativ.
 
 PFLICHT - IMMER AM ENDE - JEDEN TECHNIKER AUFLISTEN - AUCH GUTE:
@@ -158,8 +164,8 @@ function parseCSV(text) {
 
 function getNPSStatus(nps) {
   if (nps === null || nps === undefined || isNaN(nps)) return null;
-  if (nps < 0) return "kritisch";
-  if (nps < 30) return "warnung";
+  if (nps < 20) return "kritisch";  // Unter 20 = kritisch
+  if (nps < 50) return "warnung";   // Telekom-Zielwert >= 50
   return "gut";
 }
 
@@ -273,7 +279,7 @@ function KPIBar({ value, baseline, label }) {
 
 function NFTQBar({ value, label }) {
   if (value === null || isNaN(value)) return null;
-  const color = value > 10 ? "#f87171" : value > 5 ? "#fbbf24" : "#4ade80";
+  const color = value > 8 ? "#f87171" : value > 4 ? "#fbbf24" : "#4ade80";
   return (
     <div style={{ marginBottom: 6 }}>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#9ca3af", marginBottom: 2 }}>
@@ -314,7 +320,7 @@ function TechCard({ tech, baselines }) {
   if (isOT) worst = getOTStatus(tech);
   else if (isNFTQ) {
     const vals = [tech.nftq_b, tech.nftq_s, tech.nftq_m, tech.nftq_p].filter(v => v !== null);
-    worst = vals.some(v => v > 10) ? "kritisch" : vals.some(v => v > 5) ? "warnung" : "gut";
+    worst = vals.some(v => v > 8) ? "kritisch" : vals.some(v => v > 4) ? "warnung" : "gut";
   } else {
     const statuses = [
       tech.cc_rate !== null ? getStatus(tech.cc_rate, bl.cc_rate) : null,
@@ -824,7 +830,7 @@ export default function KPIAgent() {
         if (t.nps !== null) statusList.push(getNPSStatus(t.nps));
         if (t.a1 !== null) statusList.push(t.a1 >= 60 ? "gut" : t.a1 >= 45 ? "warnung" : "kritisch");
         if (t.a0 !== null && t.a0 > 10) statusList.push("kritisch");
-        const worst = statusList.includes("kritisch") ? "kritisch" : statusList.includes("warnung") ? "warnung" : "gut";
+        const worst = statusList.length === 0 ? "gut" : statusList.includes("kritisch") ? "kritisch" : statusList.includes("warnung") ? "warnung" : "gut";
         const lobText = t.nps !== null && t.nps >= 50
           ? "Ausgezeichnete Leistung! NPS " + t.nps.toFixed(0) + " weit über Durchschnitt — Sie sind ein Vorbild im Team!"
           : t.cc_rate !== null && t.cc_rate >= 99
@@ -897,7 +903,7 @@ export default function KPIAgent() {
 
   const criticalCount = angezeigt.filter(t => {
     if (t.quelle === "onetouch") return getOTStatus(t) === "kritisch";
-    if (t.quelle === "nftq") return [t.nftq_b, t.nftq_s, t.nftq_m, t.nftq_p].filter(Boolean).some(v => v > 10);
+    if (t.quelle === "nftq") return [t.nftq_b, t.nftq_s, t.nftq_m, t.nftq_p].filter(Boolean).some(v => v > 8);
     const bl = String(t.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
     return [
       t.cc_rate !== null ? getStatus(t.cc_rate, bl.cc_rate) : null,
