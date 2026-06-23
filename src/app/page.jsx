@@ -814,88 +814,33 @@ export default function KPIAgent() {
       const text = data.content?.map(b => b.text || "").join("") || "";
       setAiAnalysis(text);
 
-      // Zweiter API-Call nur fuer Massnahmen JSON
-      try {
-        const res2 = await fetch("/api/analyse", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-6", max_tokens: 1000,
-            system: "Du bist ein JSON-Generator. Antworte NUR mit purem JSON, kein Text davor oder danach, keine Backticks.",
-            messages: [{ role: "user", content: `Aus dieser KPI-Analyse: Erstelle JSON fuer JEDEN einzelnen Techniker.\n\nDatenquelle:\n${dataStr}\n\nAnalyse:\n${text}\n\nREGELN:\n- Jeden Techniker der in den Daten vorkommt MUSS im JSON erscheinen\n- Status "gut" = freundliches Lob\n- Status "warnung" oder "kritisch" = konkrete Massnahme\n- Name NUR den vollen Namen, KEINE KPI-Werte im Namen\n\nFormat:\n{"massnahmen":[{"name":"Nur Vollstaendiger Name","status":"gut|warnung|kritisch","massnahme":"Lob oder Massnahme","betreff":"Lob oder KPI Massnahme"}]}` }]
-          }),
-        });
-        const data2 = await res2.json();
-        const text2 = data2.content?.map(b => b.text || "").join("") || "";
-        const clean2 = text2.replace(/\`\`\`json|\`\`\`/g, "").trim();
-        const json2 = JSON.parse(clean2);
-        // Fuer JEDEN Techniker einen Eintrag erstellen
-        // KI-Eintraege haben Vorrang, Rest wird automatisch generiert
-        const kiMassnahmen = Array.isArray(json2.massnahmen) ? json2.massnahmen : [];
-        
-        const alleMassnahmen = angezeigt.map(t => {
-          // Suche KI-Eintrag fuer diesen Techniker (flexibler Vergleich)
-          const firstName = t.name.split(" ")[0].toLowerCase();
-          const lastName = t.name.split(" ").slice(-1)[0].toLowerCase();
-          const kiEintrag = kiMassnahmen.find(m => {
-            const mn = m.name.toLowerCase();
-            return mn.includes(firstName) || mn.includes(lastName) || t.name.toLowerCase().includes(mn.split(" ")[0]);
-          });
-          
-          if (kiEintrag) return { ...kiEintrag, name: t.name };
-          
-          // Automatisch generieren wenn kein KI-Eintrag
-          const bl = String(t.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
-          const statusList = [];
-          if (t.cc_rate !== null) statusList.push(getStatus(t.cc_rate, bl.cc_rate));
-          if (t.termintreue !== null) statusList.push(getStatus(t.termintreue, bl.termintreue));
-          if (t.loesungsquote !== null) statusList.push(getStatus(t.loesungsquote, bl.loesungsquote));
-          if (t.nps !== null) statusList.push(getNPSStatus(t.nps));
-          if (t.a1 !== null) statusList.push(t.a1 >= 60 ? "gut" : t.a1 >= 45 ? "warnung" : "kritisch");
-          if (t.a0 !== null && t.a0 > 10) statusList.push("kritisch");
-          const worst = statusList.includes("kritisch") ? "kritisch" : statusList.includes("warnung") ? "warnung" : "gut";
-          const lobText = t.nps !== null && t.nps >= 50
-            ? `Ausgezeichnete Leistung! NPS ${t.nps.toFixed(0)} weit über Durchschnitt — Sie sind ein Vorbild im Team!`
-            : t.cc_rate !== null && t.cc_rate >= 99
-            ? `Sehr gute CC-Rate ${t.cc_rate.toFixed(1)}% — hervorragende Arbeit, weiter so!`
-            : "Hervorragende Leistung! Alle KPI-Werte im grünen Bereich — weiter so!";
-          return {
-            name: t.name,
-            status: worst,
-            massnahme: worst === "gut" ? lobText : worst === "warnung" ? "KPI-Entwicklung beobachten und gezielt verbessern." : "Sofortgespräch mit Leitstelle — konkrete Verbesserungsmaßnahmen einleiten.",
-            betreff: worst === "gut" ? "Lob: Sehr gute KPI-Leistung" : worst === "warnung" ? "KPI Verbesserung erforderlich" : "Dringend: KPI kritisch"
-          };
-        });
-
-        setMassnahmen(alleMassnahmen);
-        setMassnahmenFehler(null);
-      } catch(e2) {
-        // Zweiter API-Call fehlgeschlagen - direkt aus angezeigt generieren
-        const autoMassnahmen = angezeigt.map(t => {
-          const bl = String(t.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
-          const statusList = [];
-          if (t.cc_rate !== null) statusList.push(getStatus(t.cc_rate, bl.cc_rate));
-          if (t.termintreue !== null) statusList.push(getStatus(t.termintreue, bl.termintreue));
-          if (t.loesungsquote !== null) statusList.push(getStatus(t.loesungsquote, bl.loesungsquote));
-          if (t.nps !== null) statusList.push(getNPSStatus(t.nps));
-          if (t.a1 !== null) statusList.push(t.a1 >= 60 ? "gut" : t.a1 >= 45 ? "warnung" : "kritisch");
-          if (t.a0 !== null && t.a0 > 10) statusList.push("kritisch");
-          const worst = statusList.includes("kritisch") ? "kritisch" : statusList.includes("warnung") ? "warnung" : "gut";
-          const lobText = t.nps !== null && t.nps >= 50
-            ? `Ausgezeichnete Leistung! NPS ${t.nps.toFixed(0)} weit über Durchschnitt — Sie sind ein Vorbild im Team!`
-            : t.cc_rate !== null && t.cc_rate >= 99
-            ? `Sehr gute CC-Rate ${t.cc_rate.toFixed(1)}% und Termintreue ${t.termintreue?.toFixed(1) ?? "—"}% — hervorragende Arbeit!`
-            : "Hervorragende Leistung! Alle KPI-Werte im grünen Bereich — weiter so!";
-          return {
-            name: t.name,
-            status: worst,
-            massnahme: worst === "gut" ? lobText : worst === "warnung" ? "Bitte KPI-Entwicklung beobachten und gezielt verbessern." : "Sofortgespräch mit Leitstelle — konkrete Verbesserungsmaßnahmen einleiten.",
-            betreff: worst === "gut" ? "Lob: Sehr gute KPI-Leistung" : worst === "warnung" ? "KPI Verbesserung erforderlich" : "Dringend: KPI kritisch"
-          };
-        });
-        setMassnahmen(autoMassnahmen);
-        setMassnahmenFehler(null);
-      }
+      // Automatisch Massnahmen fuer jeden Techniker generieren
+      const alleMassnahmen = angezeigt.map(t => {
+        const bl = String(t.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
+        const statusList = [];
+        if (t.cc_rate !== null) statusList.push(getStatus(t.cc_rate, bl.cc_rate));
+        if (t.termintreue !== null) statusList.push(getStatus(t.termintreue, bl.termintreue));
+        if (t.loesungsquote !== null) statusList.push(getStatus(t.loesungsquote, bl.loesungsquote));
+        if (t.nps !== null) statusList.push(getNPSStatus(t.nps));
+        if (t.a1 !== null) statusList.push(t.a1 >= 60 ? "gut" : t.a1 >= 45 ? "warnung" : "kritisch");
+        if (t.a0 !== null && t.a0 > 10) statusList.push("kritisch");
+        const worst = statusList.includes("kritisch") ? "kritisch" : statusList.includes("warnung") ? "warnung" : "gut";
+        const lobText = t.nps !== null && t.nps >= 50
+          ? "Ausgezeichnete Leistung! NPS " + t.nps.toFixed(0) + " weit über Durchschnitt — Sie sind ein Vorbild im Team!"
+          : t.cc_rate !== null && t.cc_rate >= 99
+          ? "Sehr gute CC-Rate " + t.cc_rate.toFixed(1) + "% — hervorragende Arbeit, weiter so!"
+          : t.a1 !== null && t.a1 >= 60
+          ? "Erstlösungsquote " + t.a1.toFixed(1) + "% — ausgezeichnete Effizienz beim ersten Besuch!"
+          : "Hervorragende Leistung! Alle KPI-Werte im grünen Bereich — weiter so!";
+        return {
+          name: t.name,
+          status: worst,
+          massnahme: worst === "gut" ? lobText : worst === "warnung" ? "KPI-Werte beobachten: gezieltes Coaching und Nachbesprechung einleiten." : "Sofortgespräch mit Leitstelle erforderlich — konkrete Verbesserungsmaßnahmen festlegen.",
+          betreff: worst === "gut" ? "Lob: Sehr gute KPI-Leistung" : worst === "warnung" ? "KPI Verbesserung erforderlich" : "Dringend: KPI kritisch"
+        };
+      });
+      setMassnahmen(alleMassnahmen);
+      setMassnahmenFehler(null);
 
       setActiveTab("analyse");
     } catch (e) { setError("Fehler bei der KI-Analyse."); }
