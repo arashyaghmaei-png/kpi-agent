@@ -821,6 +821,7 @@ export default function KPIAgent() {
       setAiAnalysis(text);
 
       // Automatisch Massnahmen fuer jeden Techniker generieren
+      console.log("MASSNAHMEN DEBUG - angezeigt:", angezeigt.map(t => ({name: t.name, quelle: t.quelle, nps: t.nps, cc: t.cc_rate, nftq_b: t.nftq_b, nftq_s: t.nftq_s, nftq_m: t.nftq_m, nftq_p: t.nftq_p})));
       const alleMassnahmen = angezeigt.map(t => {
         const bl = String(t.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
         const statusList = [];
