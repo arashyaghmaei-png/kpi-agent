@@ -141,10 +141,10 @@ function normalizeRows(rawRows) {
       const rawStandort = String(get(row, "standort") || "").trim();
       const standortKlar = rawStandort === "5335" || rawStandort === "5336";
       const standort = standortKlar ? rawStandort : "5335";
-      if (fmt === "smsfeedback") return { name, standort: String(get(row, "od") || "5335"), cc_rate: parsePercent(get(row, "cc")), termintreue: parsePercent(get(row, "termintreue")), loesungsquote: null, nps: parsePercent(get(row, "nps pb", "nps bs")), auftraege: get(row, "anzahl") || "—", quelle: "smsfeedback", standortUnbekannt: false };
-      if (fmt === "smsfeedbackschalten") return { name, standort: "5335", cc_rate: parsePercent(get(row, "courtesy call")), termintreue: parsePercent(get(row, "termintreue mit st vo", "termintreue ohne st vo")), loesungsquote: null, nps: parsePercent(get(row, "nps")), auftraege: get(row, "anzahl") || "—", quelle: "smsfeedbackschalten", standortUnbekannt: false };
-      if (fmt === "nftq") return { name, standort: "5335", cc_rate: null, termintreue: null, loesungsquote: null, nftq_b: parsePercent(get(row, "nftq b")), nftq_s: parsePercent(get(row, "nftq s")), nftq_m: parsePercent(get(row, "nftq m")), nftq_p: parsePercent(get(row, "nftq p")), auftraege: get(row, "anzahl") || "—", quelle: "nftq", standortUnbekannt: false };
-      return { name, standort, cc_rate: parsePercent(get(row, "cc_rate")), termintreue: parsePercent(get(row, "termintreue")), loesungsquote: parsePercent(get(row, "loesungsquote")), nps: parsePercent(get(row, "nps")), auftraege: get(row, "auftraege") || "—", quelle: "standard", standortUnbekannt: !standortKlar };
+      if (fmt === "smsfeedback") return { name, standort: String(get(row, "od") || "5335"), cc_rate: parsePercent(get(row, "cc")), termintreue: parsePercent(get(row, "termintreue")), loesungsquote: null, nps: parsePercent(get(row, "nps pb", "nps bs")), auftraege: get(row, "anzahl") || "-", quelle: "smsfeedback", standortUnbekannt: false };
+      if (fmt === "smsfeedbackschalten") return { name, standort: "5335", cc_rate: parsePercent(get(row, "courtesy call")), termintreue: parsePercent(get(row, "termintreue mit st vo", "termintreue ohne st vo")), loesungsquote: null, nps: parsePercent(get(row, "nps")), auftraege: get(row, "anzahl") || "-", quelle: "smsfeedbackschalten", standortUnbekannt: false };
+      if (fmt === "nftq") return { name, standort: "5335", cc_rate: null, termintreue: null, loesungsquote: null, nftq_b: parsePercent(get(row, "nftq b")), nftq_s: parsePercent(get(row, "nftq s")), nftq_m: parsePercent(get(row, "nftq m")), nftq_p: parsePercent(get(row, "nftq p")), auftraege: get(row, "anzahl") || "-", quelle: "nftq", standortUnbekannt: false };
+      return { name, standort, cc_rate: parsePercent(get(row, "cc_rate")), termintreue: parsePercent(get(row, "termintreue")), loesungsquote: parsePercent(get(row, "loesungsquote")), nps: parsePercent(get(row, "nps")), auftraege: get(row, "auftraege") || "-", quelle: "standard", standortUnbekannt: !standortKlar };
     });
 }
 
@@ -217,7 +217,7 @@ function parseMassnahmen(text) {
     for (const line of lines) {
       const boldName = line.match(/\*\*([A-Z][a-z]+ [A-Z][a-z]+.*?)\*\*/);
       if (boldName) {
-        currentName = boldName[1].replace(/\s*[-–].*/, "").trim();
+        currentName = boldName[1].replace(/\s*[--].*/, "").trim();
         currentStatus = line.toLowerCase().includes("gut") || line.toLowerCase().includes("best performer") || line.toLowerCase().includes("unauffaellig") || line.toLowerCase().includes("unauffällig") ? "gut" : line.toLowerCase().includes("kritisch") ? "kritisch" : "warnung";
       }
       if (currentName && line.includes("- ") && line.length > 20 && !line.includes("**")) {
@@ -246,14 +246,14 @@ function getKW(date = new Date()) {
 function formatArchivLabel(date = new Date()) {
   const { kw, jahr } = getKW(date);
   const datum = date.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
-  return `KW${String(kw).padStart(2, "0")} ${jahr} · ${datum}`;
+  return `KW${String(kw).padStart(2, "0")} ${jahr} . ${datum}`;
 }
 
 const STATUS_STYLE = {
   gut:       { bg: "#0f2e1a", color: "#4ade80", label: "GUT" },
   warnung:   { bg: "#2e1f00", color: "#fbbf24", label: "WARNUNG" },
   kritisch:  { bg: "#2e0f0f", color: "#f87171", label: "KRITISCH" },
-  unbekannt: { bg: "#1a1a2e", color: "#6b7280", label: "—" },
+  unbekannt: { bg: "#1a1a2e", color: "#6b7280", label: "-" },
 };
 
 function StatusBadge({ status }) {
@@ -341,8 +341,8 @@ function TechCard({ tech, baselines }) {
           <div style={{ fontWeight: 700, fontSize: 15, color: "#f9fafb" }}>{tech.name}</div>
           <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>
             {tech.standortUnbekannt ? <span style={{ color: "#fbbf24" }}>! Standort unbekannt - FS5335</span> : `FS${tech.standort}`}
-            {" · "}{tech.auftraege} Aufträge
-            {isOT && tech.tage ? <span style={{ marginLeft: 6 }}>· {tech.tage} Tage</span> : null}
+            {" . "}{tech.auftraege} Aufträge
+            {isOT && tech.tage ? <span style={{ marginLeft: 6 }}>. {tech.tage} Tage</span> : null}
             <span style={{ marginLeft: 8, color: "#374151", background: "#1f2937", padding: "1px 6px", borderRadius: 3 }}>{quelleLabel}</span>
           </div>
         </div>
@@ -410,7 +410,7 @@ function MassnahmenPanel({ massnahmen, parseError, kontakte }) {
       {massnahmen.map((m, i) => {
         const k = kontakte[m.name] || {};
         const body = m.status === "gut"
-          ? `Hallo ${m.name.split(" ")[0]},\n\nwir möchten Ihnen ein herzliches Lob für Ihre hervorragenden KPI-Werte aussprechen!\n\n${m.massnahme}\n\nWeiter so — Sie sind ein wertvoller Teil unseres Teams!\n\nMit freundlichen Grüßen\nFiberNC Leitstelle`
+          ? `Hallo ${m.name.split(" ")[0]},\n\nwir möchten Ihnen ein herzliches Lob für Ihre hervorragenden KPI-Werte aussprechen!\n\n${m.massnahme}\n\nWeiter so - Sie sind ein wertvoller Teil unseres Teams!\n\nMit freundlichen Grüßen\nFiberNC Leitstelle`
           : `Hallo ${m.name.split(" ")[0]},\n\nfolgende Maßnahme wurde für Sie festgelegt:\n\n${m.massnahme}\n\nBitte bestätigen Sie die Umsetzung.\n\nMit freundlichen Grüßen\nFiberNC Leitstelle`;
         const mailto = `mailto:${k.email || ""}?subject=${encodeURIComponent(m.betreff || "KPI Maßnahme")}&body=${encodeURIComponent(body)}`;
         const waLink = k.mobil ? `https://wa.me/${k.mobil.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(m.massnahme)}` : null;
@@ -426,7 +426,7 @@ function MassnahmenPanel({ massnahmen, parseError, kontakte }) {
                 {waLink ? <a href={waLink} target="_blank" rel="noreferrer" style={{ background: "#15803d", color: "#fff", padding: "5px 10px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600 }}> WA</a> : null}
               </div>
             </div>
-            {(!k.email && !k.mobil) && <div style={{ marginTop: 6, fontSize: 10, color: "#6b7280" }}>! Keine Kontaktdaten — unter " Kontakte" eintragen</div>}
+            {(!k.email && !k.mobil) && <div style={{ marginTop: 6, fontSize: 10, color: "#6b7280" }}>! Keine Kontaktdaten - unter " Kontakte" eintragen</div>}
           </div>
         );
       })}
@@ -478,7 +478,7 @@ function BaselineEditor({ baselines, onSave, onClose }) {
         ))}
         <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
           <button onClick={() => setLocal(JSON.parse(JSON.stringify(DEFAULT_BASELINES)))}
-            style={{ flex: 1, background: "#1f2937", color: "#9ca3af", border: "1px solid #374151", borderRadius: 8, padding: "10px", fontSize: 12, cursor: "pointer" }}>🔄 Standard</button>
+            style={{ flex: 1, background: "#1f2937", color: "#9ca3af", border: "1px solid #374151", borderRadius: 8, padding: "10px", fontSize: 12, cursor: "pointer" }}>Reset Standard</button>
           <button onClick={() => { onSave(local); onClose(); }}
             style={{ flex: 2, background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 8, padding: "10px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}> Speichern</button>
         </div>
@@ -500,7 +500,7 @@ function TechnikerVerwaltung({ gespeichert, onUpdate, onClose }) {
         {Object.keys(local).length === 0 && <div style={{ textAlign: "center", padding: "30px", color: "#6b7280" }}>Keine Daten geladen.</div>}
         {Object.entries(local).map(([kat, rows]) => (
           <div key={kat} style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#60a5fa", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>{kategorieLabels[kat] || kat} — {rows.length} Einträge</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#60a5fa", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>{kategorieLabels[kat] || kat} - {rows.length} Einträge</div>
             {rows.map((t, i) => (
               <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#0f172a", border: "1px solid #1f2937", borderRadius: 6, padding: "8px 12px", marginBottom: 6 }}>
                 <div>
@@ -607,13 +607,13 @@ function ArchivPanel({ archiv, onDelete, onClose }) {
                   <div style={{ fontSize: 13, fontWeight: 700, color: "#f9fafb" }}>{eintrag.label}</div>
                   <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>
                     {totalTechs} Techniker
-                    {kritisch > 0 ? <span style={{ color: "#f87171", marginLeft: 8 }}>· {kritisch} kritisch</span> : null}
-                    {eintrag.analyse ? <span style={{ color: "#4ade80", marginLeft: 8 }}>· KI ok</span> : null}
+                    {kritisch > 0 ? <span style={{ color: "#f87171", marginLeft: 8 }}>. {kritisch} kritisch</span> : null}
+                    {eintrag.analyse ? <span style={{ color: "#4ade80", marginLeft: 8 }}>. KI ok</span> : null}
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <button onClick={e => { e.stopPropagation(); exportCSV(eintrag); }}
-                    style={{ background: "#1f2937", color: "#9ca3af", border: "1px solid #374151", borderRadius: 4, cursor: "pointer", fontSize: 10, padding: "3px 8px" }}>📥 CSV</button>
+                    style={{ background: "#1f2937", color: "#9ca3af", border: "1px solid #374151", borderRadius: 4, cursor: "pointer", fontSize: 10, padding: "3px 8px" }}>CSV CSV</button>
                   <button onClick={e => { e.stopPropagation(); if (window.confirm("Eintrag löschen?")) onDelete(idx); }}
                     style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", borderRadius: 4, cursor: "pointer", fontSize: 10, padding: "3px 8px" }}>x</button>
                   <span style={{ color: "#6b7280", fontSize: 14 }}>{isOpen ? "^" : "v"}</span>
@@ -713,7 +713,7 @@ export default function KPIAgent() {
     const quelle = quellen.length === 1 ? quellen[0] : "standard";
     if (loading) {
       setPending({ rows, quelle });
-      setError("ok Gespeichert — wird nach Analyse geladen");
+      setError("ok Gespeichert - wird nach Analyse geladen");
     } else {
       setGespeichert(prev => ({ ...prev, [quelle]: rows }));
       setAktiveKategorie(quelle);
@@ -763,14 +763,14 @@ export default function KPIAgent() {
   }, [baselines]);
 
   const scoreColor = (s) => !s ? "#6b7280" : s >= 8.5 ? "#4ade80" : s >= 7 ? "#fbbf24" : "#f87171";
-  const scoreLabel = (s) => !s ? "—" : s >= 9 ? "Ausgezeichnet" : s >= 8 ? "Gut" : s >= 7 ? "Befriedigend" : s >= 5 ? "Verbesserungsbedarf" : "Kritisch";
+  const scoreLabel = (s) => !s ? "-" : s >= 9 ? "Ausgezeichnet" : s >= 8 ? "Gut" : s >= 7 ? "Befriedigend" : s >= 5 ? "Verbesserungsbedarf" : "Kritisch";
 
   const bewerteEinzelTechniker = useCallback(async (tech) => {
     const bl = String(tech.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
     const score = berechneTechScore(tech);
     const kpiText = tech.quelle === "onetouch"
-      ? `A-Gesamt=${tech.a_ges?.toFixed(1) ?? "—"}%, A1=${tech.a1?.toFixed(1) ?? "—"}%, AX=${tech.ax?.toFixed(1) ?? "—"}%, A0=${tech.a0?.toFixed(1) ?? "—"}%`
-      : `CC=${tech.cc_rate?.toFixed(1) ?? "—"}% (Basis ${bl.cc_rate}%), Termintreue=${tech.termintreue?.toFixed(1) ?? "—"}% (Basis ${bl.termintreue}%), Lösungsquote=${tech.loesungsquote?.toFixed(1) ?? "—"}%, NPS=${tech.nps?.toFixed(0) ?? "—"}`;
+      ? `A-Gesamt=${tech.a_ges?.toFixed(1) ?? "-"}%, A1=${tech.a1?.toFixed(1) ?? "-"}%, AX=${tech.ax?.toFixed(1) ?? "-"}%, A0=${tech.a0?.toFixed(1) ?? "-"}%`
+      : `CC=${tech.cc_rate?.toFixed(1) ?? "-"}% (Basis ${bl.cc_rate}%), Termintreue=${tech.termintreue?.toFixed(1) ?? "-"}% (Basis ${bl.termintreue}%), Lösungsquote=${tech.loesungsquote?.toFixed(1) ?? "-"}%, NPS=${tech.nps?.toFixed(0) ?? "-"}`;
     setBewertungLoading(prev => ({ ...prev, [tech.name]: true }));
     try {
       const res = await fetch("/api/analyse", {
@@ -806,9 +806,9 @@ export default function KPIAgent() {
     if (!angezeigt.length) return;
     setLoading(true); setError(""); setAiAnalysis(""); setMassnahmen([]); setMassnahmenFehler(null);
     const dataStr = angezeigt.map(t => {
-      if (t.quelle === "onetouch") return `${t.name}: A-Ges=${t.a_ges?.toFixed(1) ?? "—"}%, A1=${t.a1?.toFixed(1) ?? "—"}%, AX=${t.ax?.toFixed(1) ?? "—"}%, A0=${t.a0?.toFixed(1) ?? "—"}%, Aufträge=${t.auftraege}`;
-      if (t.quelle === "nftq") return `${t.name}: NFTQ-B=${t.nftq_b?.toFixed(2) ?? "—"}%, NFTQ-S=${t.nftq_s?.toFixed(2) ?? "—"}%, NFTQ-M=${t.nftq_m?.toFixed(2) ?? "—"}%, NFTQ-P=${t.nftq_p?.toFixed(2) ?? "—"}%, Aufträge=${t.auftraege}`;
-      return `${t.name} (FS${t.standort}): CC=${t.cc_rate?.toFixed(1) ?? "—"}%, Termintreue=${t.termintreue?.toFixed(1) ?? "—"}%, Lösungsquote=${t.loesungsquote?.toFixed(1) ?? "—"}%, NPS=${t.nps?.toFixed(0) ?? "—"}, Aufträge=${t.auftraege}`;
+      if (t.quelle === "onetouch") return `${t.name}: A-Ges=${t.a_ges?.toFixed(1) ?? "-"}%, A1=${t.a1?.toFixed(1) ?? "-"}%, AX=${t.ax?.toFixed(1) ?? "-"}%, A0=${t.a0?.toFixed(1) ?? "-"}%, Aufträge=${t.auftraege}`;
+      if (t.quelle === "nftq") return `${t.name}: NFTQ-B=${t.nftq_b?.toFixed(2) ?? "-"}%, NFTQ-S=${t.nftq_s?.toFixed(2) ?? "-"}%, NFTQ-M=${t.nftq_m?.toFixed(2) ?? "-"}%, NFTQ-P=${t.nftq_p?.toFixed(2) ?? "-"}%, Aufträge=${t.auftraege}`;
+      return `${t.name} (FS${t.standort}): CC=${t.cc_rate?.toFixed(1) ?? "-"}%, Termintreue=${t.termintreue?.toFixed(1) ?? "-"}%, Lösungsquote=${t.loesungsquote?.toFixed(1) ?? "-"}%, NPS=${t.nps?.toFixed(0) ?? "-"}, Aufträge=${t.auftraege}`;
     }).join("\n");
     try {
       const res = await fetch("/api/analyse", {
@@ -842,14 +842,14 @@ export default function KPIAgent() {
         // Personalisierter Lob-Text
         const nftqGut = t.quelle === "nftq" && worst === "gut";
         const lobText = nftqGut
-          ? "Alle NFTQ-Werte im Zielbereich (≤4%) — ausgezeichnete Qualitätsarbeit, weiter so!"
+          ? "Alle NFTQ-Werte im Zielbereich (<=4%) - ausgezeichnete Qualitätsarbeit, weiter so!"
           : t.nps !== null && t.nps >= 50
-          ? "Ausgezeichnete Leistung! NPS " + (t.nps || 0).toFixed(0) + " weit über Zielwert 50 — Sie sind ein Vorbild im Team!"
+          ? "Ausgezeichnete Leistung! NPS " + (t.nps || 0).toFixed(0) + " weit über Zielwert 50 - Sie sind ein Vorbild im Team!"
           : t.cc_rate !== null && t.cc_rate >= 96
-          ? "Sehr gute CC-Rate " + (t.cc_rate || 0).toFixed(1) + "% — Zielwert 96% erreicht, hervorragende Arbeit!"
+          ? "Sehr gute CC-Rate " + (t.cc_rate || 0).toFixed(1) + "% - Zielwert 96% erreicht, hervorragende Arbeit!"
           : t.a1 !== null && t.a1 >= 60
-          ? "Erstlösungsquote " + (t.a1 || 0).toFixed(1) + "% — Zielwert 60% erreicht, ausgezeichnete Effizienz!"
-          : "Hervorragende Leistung! Alle KPI-Werte im Zielbereich — weiter so!";
+          ? "Erstlösungsquote " + (t.a1 || 0).toFixed(1) + "% - Zielwert 60% erreicht, ausgezeichnete Effizienz!"
+          : "Hervorragende Leistung! Alle KPI-Werte im Zielbereich - weiter so!";
         const safeReturn = {
           name: String(t.name || "Unbekannt"),
           status: String(worst || "gut"),
@@ -930,12 +930,12 @@ export default function KPIAgent() {
 
   const avg = (key) => {
     const vals = angezeigt.map(t => t[key]).filter(v => v !== null && !isNaN(v));
-    return vals.length ? (vals.reduce((s, v) => s + v, 0) / vals.length).toFixed(1) : "—";
+    return vals.length ? (vals.reduce((s, v) => s + v, 0) / vals.length).toFixed(1) : "-";
   };
 
   const teamAvgScore = () => {
     const scores = angezeigt.map(t => berechneTechScore(t)).filter(s => s !== null && !isNaN(s));
-    return scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : "—";
+    return scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : "-";
   };
 
   const isOTView = aktiveKategorie === "onetouch";
@@ -967,7 +967,7 @@ export default function KPIAgent() {
           const isLoadingThis = bewertungLoading[tech.name];
           const k = kontakte[tech.name] || {};
           const mailBody = bew
-            ? `Hallo ${tech.name.split(" ")[0]},\n\nhier ist Ihre persönliche KPI-Bewertung:\n\nScore: ${score}/10 — ${scoreLabel(score)}\n\n${bew.kommentar}\n\n${bew.staerken?.length ? `Stärken:\n${bew.staerken.map(s => `• ${s}`).join("\n")}\n\n` : ""}${bew.schwaechen?.length ? `Verbesserungsbedarf:\n${bew.schwaechen.map(s => `• ${s}`).join("\n")}\n\n` : ""}Maßnahme: ${bew.massnahme || ""}\n\nMit freundlichen Grüßen\nFiberNC Leitstelle`
+            ? `Hallo ${tech.name.split(" ")[0]},\n\nhier ist Ihre persönliche KPI-Bewertung:\n\nScore: ${score}/10 - ${scoreLabel(score)}\n\n${bew.kommentar}\n\n${bew.staerken?.length ? `Stärken:\n${bew.staerken.map(s => `• ${s}`).join("\n")}\n\n` : ""}${bew.schwaechen?.length ? `Verbesserungsbedarf:\n${bew.schwaechen.map(s => `• ${s}`).join("\n")}\n\n` : ""}Maßnahme: ${bew.massnahme || ""}\n\nMit freundlichen Grüßen\nFiberNC Leitstelle`
             : "";
           const mailto = `mailto:${k.email || ""}?subject=${encodeURIComponent(`KPI-Bewertung ${tech.name}`)}&body=${encodeURIComponent(mailBody)}`;
           return (
@@ -977,13 +977,13 @@ export default function KPIAgent() {
                   <div style={{ fontSize: 16, fontWeight: 700, color: scoreColor(score), fontFamily: "monospace", minWidth: 28 }}>#{i + 1}</div>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 14, color: "#f9fafb" }}>{tech.name}</div>
-                    <div style={{ fontSize: 11, color: "#6b7280" }}>FS{tech.standort} · {tech.auftraege} Aufträge</div>
+                    <div style={{ fontSize: 11, color: "#6b7280" }}>FS{tech.standort} . {tech.auftraege} Aufträge</div>
                   </div>
                 </div>
                 {score !== null && (
                   <div style={{ textAlign: "center" }}>
                     <div style={{ fontSize: 22, fontWeight: 700, color: scoreColor(score), fontFamily: "monospace" }}>{score}</div>
-                    <div style={{ fontSize: 9, color: scoreColor(score) }}>/10 · {scoreLabel(score)}</div>
+                    <div style={{ fontSize: 9, color: scoreColor(score) }}>/10 . {scoreLabel(score)}</div>
                   </div>
                 )}
               </div>
@@ -1001,7 +1001,7 @@ export default function KPIAgent() {
                   <div style={{ fontSize: 12, color: "#d1d5db", lineHeight: 1.6, marginBottom: 8 }}>{bew.kommentar}</div>
                   <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
                     {bew.staerken?.map((s, si) => <span key={si} style={{ fontSize: 10, color: "#4ade80" }}>ok {s}</span>)}
-                    {bew.schwaechen?.map((s, si) => <span key={si} style={{ fontSize: 10, color: "#f87171" }}>✗ {s}</span>)}
+                    {bew.schwaechen?.map((s, si) => <span key={si} style={{ fontSize: 10, color: "#f87171" }}>x {s}</span>)}
                   </div>
                   {bew.massnahme && <div style={{ fontSize: 11, color: "#fbbf24", marginTop: 6 }}>Massnahme: {bew.massnahme}</div>}
                 </div>
@@ -1014,9 +1014,9 @@ export default function KPIAgent() {
                 {bew && k.email && (
                   <a href={mailto} style={{ background: "#1d4ed8", color: "#fff", padding: "5px 12px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600 }}> Mail senden</a>
                 )}
-                {bew && !k.email && <span style={{ fontSize: 10, color: "#6b7280" }}>! Keine Email — unter  eintragen</span>}
+                {bew && !k.email && <span style={{ fontSize: 10, color: "#6b7280" }}>! Keine Email - unter  eintragen</span>}
                 {k.mobil && bew && (
-                  <a href={`https://wa.me/${k.mobil.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(`Hallo ${tech.name.split(" ")[0]}, Ihr KPI-Score: ${score}/10 — ${scoreLabel(score)}. ${bew?.massnahme || ""}`)}`}
+                  <a href={`https://wa.me/${k.mobil.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(`Hallo ${tech.name.split(" ")[0]}, Ihr KPI-Score: ${score}/10 - ${scoreLabel(score)}. ${bew?.massnahme || ""}`)}`}
                     target="_blank" rel="noreferrer"
                     style={{ background: "#15803d", color: "#fff", padding: "5px 12px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600 }}> WhatsApp</a>
                 )}
@@ -1039,9 +1039,9 @@ export default function KPIAgent() {
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#4ade80", boxShadow: "0 0 6px #4ade80", flexShrink: 0 }} />
           <button onClick={() => window.location.reload()} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
-            <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: 2, color: "#9ca3af", textTransform: "uppercase" }}>KPI Agent ↻</span>
+            <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: 2, color: "#9ca3af", textTransform: "uppercase" }}>KPI Agent </span>
           </button>
-          <span style={{ color: "#374151" }}>·</span>
+          <span style={{ color: "#374151" }}>.</span>
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
             {KATEGORIEN.map(k => {
               const anzahl = k.id === "alle"
