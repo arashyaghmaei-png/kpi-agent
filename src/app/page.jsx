@@ -681,6 +681,72 @@ function KontakteEditor({ kontakte, onSave, onClose }) {
 }
 
 
+function PeriodDialog({ onConfirm, onCancel }) {
+  const today = new Date();
+  const fmt = (d) => d.toISOString().split("T")[0];
+  const [von, setVon] = React.useState(fmt(new Date(today.getTime() - 6*24*60*60*1000)));
+  const [bis, setBis] = React.useState(fmt(today));
+
+  const berechneKW = (vonStr, bisStr) => {
+    const vonD = new Date(vonStr);
+    const bisD = new Date(bisStr);
+    const getKWNr = (d) => {
+      const tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+      const dayNum = tmp.getUTCDay() || 7;
+      tmp.setUTCDate(tmp.getUTCDate() + 4 - dayNum);
+      const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+      return { kw: Math.ceil((((tmp - yearStart) / 86400000) + 1) / 7), jahr: tmp.getUTCFullYear() };
+    };
+    const kwVon = getKWNr(vonD);
+    const kwBis = getKWNr(bisD);
+    const datumVon = vonD.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" });
+    const datumBis = bisD.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+    if (kwVon.kw === kwBis.kw && kwVon.jahr === kwBis.jahr) {
+      return { label: `KW${String(kwVon.kw).padStart(2,"0")} ${kwVon.jahr} (${datumVon} - ${datumBis})`, kw: kwVon.kw, jahr: kwVon.jahr };
+    }
+    return { label: `KW${String(kwVon.kw).padStart(2,"0")}-KW${String(kwBis.kw).padStart(2,"0")} ${kwBis.jahr} (${datumVon} - ${datumBis})`, kw: kwBis.kw, jahr: kwBis.jahr };
+  };
+
+  const info = berechneKW(von, bis);
+
+  return (
+    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.8)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 12, padding: 28, width: 420 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: "#f9fafb", marginBottom: 6 }}>Auswertungszeitraum</div>
+        <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 20 }}>Von wann bis wann ist diese Auswertung?</div>
+        
+        <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>Von</div>
+            <input type="date" value={von} onChange={e => setVon(e.target.value)}
+              style={{ width: "100%", background: "#0f172a", border: "1px solid #374151", borderRadius: 6, color: "#e5e7eb", padding: "8px 10px", fontSize: 13, boxSizing: "border-box" }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>Bis</div>
+            <input type="date" value={bis} onChange={e => setBis(e.target.value)}
+              style={{ width: "100%", background: "#0f172a", border: "1px solid #374151", borderRadius: 6, color: "#e5e7eb", padding: "8px 10px", fontSize: 13, boxSizing: "border-box" }} />
+          </div>
+        </div>
+
+        <div style={{ background: "#0f172a", borderRadius: 8, padding: "10px 14px", marginBottom: 20 }}>
+          <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>Berechnete Kalenderwoche:</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#60a5fa" }}>{info.label}</div>
+          <div style={{ fontSize: 11, color: "#4ade80", marginTop: 4 }}>Wird automatisch archiviert nach der Analyse</div>
+        </div>
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={onCancel} style={{ flex: 1, background: "#1f2937", color: "#9ca3af", border: "1px solid #374151", borderRadius: 8, padding: "10px", cursor: "pointer", fontSize: 13 }}>
+            Abbrechen
+          </button>
+          <button onClick={() => onConfirm({ von, bis, ...info })} style={{ flex: 2, background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, padding: "10px", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+            Hochladen
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function VerlaufPanel({ techName, archiv, onClose }) {
   const eintraege = archiv
     .map(e => {
@@ -845,8 +911,11 @@ export default function KPIAgent() {
   const [showBaseline, setShowBaseline] = useState(false);
   const [showTechVerwaltung, setShowTechVerwaltung] = useState(false);
   const [showArchiv, setShowArchiv] = useState(false);
-  const [minAuftraege, setMinAuftraege] = useState(5);
+  const [minAuftraege, setMinAuftraege] = useState(1);
   const [showVerlauf, setShowVerlauf] = useState(null);
+  const [uploadPeriod, setUploadPeriod] = useState(null); // { von, bis, kw, label }
+  const [showPeriodDialog, setShowPeriodDialog] = useState(false);
+  const [pendingFile, setPendingFile] = useState(null);
   const dashboardRef = useRef(null);
 
   useEffect(() => {
@@ -972,10 +1041,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
     }
   }, [handleRows]);
 
-  const handleFile = useCallback((e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    e.target.value = "";
+  const processFile = useCallback((file) => {
     if (file.name.match(/\.xlsx?$/i)) { processXLSX(file); }
     else if (file.name.match(/\.(png|jpg|jpeg|gif|webp)$/i)) { handleImageOCR(file); }
     else {
@@ -984,6 +1050,14 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
       reader.readAsText(file, "utf-8");
     }
   }, [processXLSX, handleRows, handleImageOCR]);
+
+  const handleFile = useCallback((e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = "";
+    setPendingFile(file);
+    setShowPeriodDialog(true);
+  }, []);
 
   const angezeigt = (aktiveKategorie === "alle"
     ? Object.values(gespeichert).flat().filter((t, idx, arr) => arr.findLastIndex(x => x.name === t.name) === idx)
@@ -1158,6 +1232,19 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
       setMassnahmenFehler(null);
 
       setActiveTab("analyse");
+      // Auto-Archivierung nach Analyse
+      if (uploadPeriod) {
+        const archivEintrag = {
+          label: uploadPeriod.label,
+          datum: new Date().toISOString(),
+          daten: { ...gespeichert }
+        };
+        setArchiv(prev => {
+          const exists = prev.find(a => a.label === uploadPeriod.label);
+          if (exists) return prev.map(a => a.label === uploadPeriod.label ? archivEintrag : a);
+          return [...prev, archivEintrag];
+        });
+      }
     } catch (e) { setError("Fehler bei der KI-Analyse."); }
     finally { setLoading(false); }
   };
@@ -1339,6 +1426,14 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
       {showKontakte && <KontakteEditor kontakte={kontakte} onSave={setKontakte} onClose={() => setShowKontakte(false)} />}
       {showBaseline && <BaselineEditor baselines={baselines} onSave={setBaselines} onClose={() => setShowBaseline(false)} />}
       {showTechVerwaltung && <TechnikerVerwaltung gespeichert={gespeichert} onUpdate={setGespeichert} onClose={() => setShowTechVerwaltung(false)} />}
+      {showPeriodDialog && <PeriodDialog
+        onConfirm={(period) => {
+          setUploadPeriod(period);
+          setShowPeriodDialog(false);
+          if (pendingFile) { processFile(pendingFile); setPendingFile(null); }
+        }}
+        onCancel={() => { setShowPeriodDialog(false); setPendingFile(null); }}
+      />}
       {showVerlauf && <VerlaufPanel techName={showVerlauf} archiv={archiv} onClose={() => setShowVerlauf(null)} />}
       {showArchiv && <ArchivPanel archiv={archiv} onDelete={(idx) => setArchiv(prev => prev.filter((_, i) => i !== idx))} onClose={() => setShowArchiv(false)} />}
 
@@ -1374,6 +1469,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
           <button onClick={() => setShowBaseline(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}> Baselines</button>
           <button onClick={() => setShowTechVerwaltung(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}> Techniker</button>
           <button onClick={() => setShowArchiv(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}> Archiv{archiv.length > 0 ? ` (${archiv.length})` : ""}</button>
+          {uploadPeriod && <div style={{ fontSize: 11, color: "#60a5fa", background: "#0f172a", border: "1px solid #1e3a5f", borderRadius: 6, padding: "4px 10px" }}>{uploadPeriod.label}</div>}
           <div style={{ display: "flex", alignItems: "center", gap: 4, background: "#111827", border: "1px solid #374151", borderRadius: 6, padding: "4px 8px" }}>
             <span style={{ fontSize: 10, color: "#6b7280" }}>Min.</span>
             <input type="number" min="1" max="50" value={minAuftraege}
