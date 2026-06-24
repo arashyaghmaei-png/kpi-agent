@@ -340,7 +340,7 @@ function TechCard({ tech, baselines }) {
         <div>
           <div style={{ fontWeight: 700, fontSize: 15, color: "#f9fafb" }}>{tech.name}</div>
           <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>
-            {tech.standortUnbekannt ? <span style={{ color: "#fbbf24" }}>! Standort unbekannt -> FS5335</span> : `FS${tech.standort}`}
+            {tech.standortUnbekannt ? <span style={{ color: "#fbbf24" }}>! Standort unbekannt - FS5335</span> : `FS${tech.standort}`}
             {" · "}{tech.auftraege} Aufträge
             {isOT && tech.tage ? <span style={{ marginLeft: 6 }}>· {tech.tage} Tage</span> : null}
             <span style={{ marginLeft: 8, color: "#374151", background: "#1f2937", padding: "1px 6px", borderRadius: 3 }}>{quelleLabel}</span>
@@ -1003,7 +1003,7 @@ export default function KPIAgent() {
                     {bew.staerken?.map((s, si) => <span key={si} style={{ fontSize: 10, color: "#4ade80" }}>ok {s}</span>)}
                     {bew.schwaechen?.map((s, si) => <span key={si} style={{ fontSize: 10, color: "#f87171" }}>✗ {s}</span>)}
                   </div>
-                  {bew.massnahme && <div style={{ fontSize: 11, color: "#fbbf24", marginTop: 6 }}>-> {bew.massnahme}</div>}
+                  {bew.massnahme && <div style={{ fontSize: 11, color: "#fbbf24", marginTop: 6 }}>Massnahme: {bew.massnahme}</div>}
                 </div>
               )}
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -1148,7 +1148,7 @@ export default function KPIAgent() {
                   </button>
                   <button onClick={bewerteAlle}
                     style={{ width: "100%", background: "#0f172a", color: "#60a5fa", border: "1px solid #1e3a5f", borderRadius: 8, padding: "12px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                     Alle bewerten -> Firmendashboard
+                     Alle bewerten - Firmendashboard
                   </button>
                   <button onClick={archivieren}
                     style={{ width: "100%", background: "#0f172a", color: "#6b7280", border: "1px solid #1f2937", borderRadius: 8, padding: "10px", fontSize: 12, cursor: "pointer" }}>
