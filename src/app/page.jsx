@@ -997,14 +997,20 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
   };
 
   const berechneTechScore = useCallback((tech) => {
+    const v = (x) => x !== null && x !== undefined && !isNaN(x);
     const bl = String(tech.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
     const scores = [];
-    if (tech.cc_rate !== null) scores.push(Math.min(10, (tech.cc_rate / bl.cc_rate) * 10));
-    if (tech.termintreue !== null) scores.push(Math.min(10, (tech.termintreue / bl.termintreue) * 10));
-    if (tech.loesungsquote !== null) scores.push(Math.min(10, (tech.loesungsquote / bl.loesungsquote) * 10));
-    if (tech.nps !== null) scores.push(Math.min(10, Math.max(0, (tech.nps + 100) / 20)));
-    if (tech.a1 !== null) scores.push(Math.min(10, (tech.a1 / 60) * 10));
-    if (tech.a_ges !== null) scores.push(Math.min(10, (tech.a_ges / 95) * 10));
+    if (v(tech.cc_rate)) scores.push(Math.min(10, (tech.cc_rate / bl.cc_rate) * 10));
+    if (v(tech.termintreue)) scores.push(Math.min(10, (tech.termintreue / bl.termintreue) * 10));
+    if (v(tech.loesungsquote)) scores.push(Math.min(10, (tech.loesungsquote / bl.loesungsquote) * 10));
+    if (v(tech.nps)) scores.push(Math.min(10, Math.max(0, (tech.nps + 100) / 20)));
+    if (v(tech.a1)) scores.push(Math.min(10, (tech.a1 / 60) * 10));
+    if (v(tech.a_ges)) scores.push(Math.min(10, (tech.a_ges / 95) * 10));
+    // NFTQ Score - niedrigere Werte sind besser, Zielwert = 10/10
+    if (v(tech.nftq_b)) scores.push(Math.max(0, Math.min(10, (1 - tech.nftq_b / 20) * 10)));
+    if (v(tech.nftq_s)) scores.push(Math.max(0, Math.min(10, (1 - tech.nftq_s / 20) * 10)));
+    if (v(tech.nftq_m)) scores.push(Math.max(0, Math.min(10, (1 - tech.nftq_m / 20) * 10)));
+    if (v(tech.nftq_p)) scores.push(Math.max(0, Math.min(10, (1 - tech.nftq_p / 20) * 10)));
     if (!scores.length) return null;
     return Math.round((scores.reduce((s, v) => s + v, 0) / scores.length) * 10) / 10;
   }, [baselines]);
@@ -1017,7 +1023,9 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
     const score = berechneTechScore(tech);
     const kpiText = tech.quelle === "onetouch"
       ? `A-Gesamt=${tech.a_ges?.toFixed(1) ?? "-"}%, A1=${tech.a1?.toFixed(1) ?? "-"}%, AX=${tech.ax?.toFixed(1) ?? "-"}%, A0=${tech.a0?.toFixed(1) ?? "-"}%`
-      : `CC=${tech.cc_rate?.toFixed(1) ?? "-"}% (Basis ${bl.cc_rate}%), Termintreue=${tech.termintreue?.toFixed(1) ?? "-"}% (Basis ${bl.termintreue}%), Lösungsquote=${tech.loesungsquote?.toFixed(1) ?? "-"}%, NPS=${tech.nps?.toFixed(0) ?? "-"}`;
+      : tech.quelle === "nftq"
+      ? `NFTQ-B=${tech.nftq_b?.toFixed(2) ?? "-"}% (Ziel<=4%), NFTQ-S=${tech.nftq_s?.toFixed(2) ?? "-"}% (Ziel<=7%), NFTQ-M=${tech.nftq_m?.toFixed(2) ?? "-"}% (Ziel<=4%), NFTQ-P=${tech.nftq_p?.toFixed(2) ?? "-"}% (Ziel<=8.7%), Mengen: B=${tech.menge_b ?? "-"} S=${tech.menge_s ?? "-"} M=${tech.menge_m ?? "-"} P=${tech.menge_p ?? "-"}`
+      : `CC=${tech.cc_rate?.toFixed(1) ?? "-"}% (Ziel>=95%), Termintreue=${tech.termintreue?.toFixed(1) ?? "-"}% (Ziel>=96%), Loesungsquote=${tech.loesungsquote?.toFixed(1) ?? "-"}%, NPS=${tech.nps?.toFixed(0) ?? "-"} (Ziel>=67)`;
     setBewertungLoading(prev => ({ ...prev, [tech.name]: true }));
     try {
       const res = await fetch("/api/analyse", {
