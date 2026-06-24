@@ -572,6 +572,75 @@ function KontakteEditor({ kontakte, onSave, onClose }) {
   );
 }
 
+
+function VerlaufPanel({ techName, archiv, onClose }) {
+  const eintraege = archiv
+    .map(e => {
+      const alle = Object.values(e.daten).flat();
+      const tech = alle.find(t => t.name === techName);
+      if (!tech) return null;
+      return { label: e.label, datum: e.datum, tech };
+    })
+    .filter(Boolean)
+    .sort((a, b) => new Date(a.datum) - new Date(b.datum));
+
+  if (!eintraege.length) return (
+    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.85)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 12, padding: 24, width: 600 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
+          <span style={{ fontWeight: 700, color: "#f9fafb" }}>Verlauf: {techName}</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 18 }}>x</button>
+        </div>
+        <div style={{ color: "#6b7280", textAlign: "center", padding: 40 }}>Noch keine archivierten Daten fuer diesen Techniker.</div>
+      </div>
+    </div>
+  );
+
+  const kpiKeys = [
+    { key: "cc_rate", label: "CC-Rate", baseline: 96, einheit: "%" },
+    { key: "termintreue", label: "Termintreue", baseline: 97, einheit: "%" },
+    { key: "nps", label: "NPS", baseline: 50, einheit: "" },
+    { key: "a1", label: "A1-Quote", baseline: 60, einheit: "%" },
+    { key: "nftq_s", label: "NFTQ-S", baseline: 4, einheit: "%", invert: true },
+    { key: "nftq_p", label: "NFTQ-P", baseline: 4, einheit: "%", invert: true },
+  ].filter(k => eintraege.some(e => e.tech[k.key] !== null && e.tech[k.key] !== undefined));
+
+  return (
+    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.85)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 12, padding: 24, width: 680, maxHeight: "88vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <span style={{ fontWeight: 700, fontSize: 15, color: "#f9fafb" }}>Verlauf: {techName}</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 18 }}>x</button>
+        </div>
+
+        {kpiKeys.map(({ key, label, baseline, einheit, invert }) => (
+          <div key={key} style={{ marginBottom: 20, background: "#0f172a", borderRadius: 8, padding: "14px 16px" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#60a5fa", marginBottom: 10 }}>{label} (Ziel: {invert ? "<=" : ">="}{baseline}{einheit})</div>
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+              {eintraege.map((e, i) => {
+                const val = e.tech[key];
+                if (val === null || val === undefined) return null;
+                const gut = invert ? val <= baseline : val >= baseline;
+                const warn = invert ? val <= baseline * 2 : val >= baseline * 0.93;
+                const color = gut ? "#4ade80" : warn ? "#fbbf24" : "#f87171";
+                const maxVal = invert ? baseline * 3 : 100;
+                const height = Math.max(20, Math.min(80, (val / maxVal) * 80));
+                return (
+                  <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                    <span style={{ fontSize: 10, color, fontWeight: 700 }}>{typeof val === "number" ? val.toFixed(1) : val}{einheit}</span>
+                    <div style={{ width: 32, height, background: color, borderRadius: "3px 3px 0 0", opacity: 0.8 }} />
+                    <span style={{ fontSize: 9, color: "#6b7280", textAlign: "center", maxWidth: 40 }}>{e.label.split(" ")[0]}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ArchivPanel({ archiv, onDelete, onClose }) {
   const [aufgeklappt, setAufgeklappt] = useState(null);
   const kategorieLabels = { smsfeedback: "SMS-Feedback", smsfeedbackschalten: "Schalten", nftq: "NFTQ", standard: "Manuell", onetouch: "OneTouch" };
@@ -668,6 +737,8 @@ export default function KPIAgent() {
   const [showBaseline, setShowBaseline] = useState(false);
   const [showTechVerwaltung, setShowTechVerwaltung] = useState(false);
   const [showArchiv, setShowArchiv] = useState(false);
+  const [minAuftraege, setMinAuftraege] = useState(5);
+  const [showVerlauf, setShowVerlauf] = useState(null);
   const dashboardRef = useRef(null);
 
   useEffect(() => {
@@ -743,9 +814,13 @@ export default function KPIAgent() {
     }
   }, [processXLSX, handleRows]);
 
-  const angezeigt = aktiveKategorie === "alle"
+  const angezeigt = (aktiveKategorie === "alle"
     ? Object.values(gespeichert).flat().filter((t, idx, arr) => arr.findLastIndex(x => x.name === t.name) === idx)
-    : (gespeichert[aktiveKategorie] || []);
+    : (gespeichert[aktiveKategorie] || [])
+  ).filter(t => {
+    const auftr = typeof t.auftraege === "number" ? t.auftraege : parseInt(t.auftraege) || 0;
+    return auftr >= minAuftraege;
+  });
 
   const hatDaten = Object.keys(gespeichert).length > 0;
 
@@ -1054,6 +1129,7 @@ export default function KPIAgent() {
                   <a href={mailto} style={{ background: "#1d4ed8", color: "#fff", padding: "5px 12px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600 }}> Mail senden</a>
                 )}
                 {bew && !k.email && <span style={{ fontSize: 10, color: "#6b7280" }}>! Keine Email - unter  eintragen</span>}
+                {archiv.length > 0 && <button onClick={() => setShowVerlauf(tech.name)} style={{ background: "#0f172a", color: "#60a5fa", border: "1px solid #1e3a5f", borderRadius: 5, cursor: "pointer", fontSize: 11, padding: "5px 12px" }}>Verlauf</button>}
                 {k.mobil && bew && (
                   <a href={`https://wa.me/${k.mobil.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(`Hallo ${tech.name.split(" ")[0]}, Ihr KPI-Score: ${score}/10 - ${scoreLabel(score)}. ${bew?.massnahme || ""}`)}`}
                     target="_blank" rel="noreferrer"
@@ -1072,6 +1148,7 @@ export default function KPIAgent() {
       {showKontakte && <KontakteEditor kontakte={kontakte} onSave={setKontakte} onClose={() => setShowKontakte(false)} />}
       {showBaseline && <BaselineEditor baselines={baselines} onSave={setBaselines} onClose={() => setShowBaseline(false)} />}
       {showTechVerwaltung && <TechnikerVerwaltung gespeichert={gespeichert} onUpdate={setGespeichert} onClose={() => setShowTechVerwaltung(false)} />}
+      {showVerlauf && <VerlaufPanel techName={showVerlauf} archiv={archiv} onClose={() => setShowVerlauf(null)} />}
       {showArchiv && <ArchivPanel archiv={archiv} onDelete={(idx) => setArchiv(prev => prev.filter((_, i) => i !== idx))} onClose={() => setShowArchiv(false)} />}
 
       <div style={{ borderBottom: "1px solid #1f2937", padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
@@ -1106,6 +1183,13 @@ export default function KPIAgent() {
           <button onClick={() => setShowBaseline(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}> Baselines</button>
           <button onClick={() => setShowTechVerwaltung(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}> Techniker</button>
           <button onClick={() => setShowArchiv(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}> Archiv{archiv.length > 0 ? ` (${archiv.length})` : ""}</button>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, background: "#111827", border: "1px solid #374151", borderRadius: 6, padding: "4px 8px" }}>
+            <span style={{ fontSize: 10, color: "#6b7280" }}>Min.</span>
+            <input type="number" min="1" max="50" value={minAuftraege}
+              onChange={e => setMinAuftraege(parseInt(e.target.value) || 1)}
+              style={{ width: 36, background: "transparent", border: "none", color: "#e5e7eb", fontSize: 11, textAlign: "center", outline: "none" }} />
+            <span style={{ fontSize: 10, color: "#6b7280" }}>Auftr.</span>
+          </div>
           <label style={{ background: loading ? "#1a2e1a" : "#1f2937", color: loading ? "#4ade80" : "#9ca3af", border: `1px solid ${loading ? "#14532d" : "#374151"}`, padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>
             {loading ? "... Nächste" : " Upload"}
             <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} style={{ display: "none" }} />
