@@ -340,7 +340,7 @@ function TechCard({ tech, baselines }) {
         <div>
           <div style={{ fontWeight: 700, fontSize: 15, color: "#f9fafb" }}>{tech.name}</div>
           <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>
-            {tech.standortUnbekannt ? <span style={{ color: "#fbbf24" }}>⚠ Standort unbekannt → FS5335</span> : `FS${tech.standort}`}
+            {tech.standortUnbekannt ? <span style={{ color: "#fbbf24" }}>! Standort unbekannt -> FS5335</span> : `FS${tech.standort}`}
             {" · "}{tech.auftraege} Aufträge
             {isOT && tech.tage ? <span style={{ marginLeft: 6 }}>· {tech.tage} Tage</span> : null}
             <span style={{ marginLeft: 8, color: "#374151", background: "#1f2937", padding: "1px 6px", borderRadius: 3 }}>{quelleLabel}</span>
@@ -354,7 +354,7 @@ function TechCard({ tech, baselines }) {
           <KPIBar value={tech.a_ges} baseline={OT_BASELINE.a_ges} label="Gesamterfolg" />
           <KPIBar value={tech.a1} baseline={OT_BASELINE.a1} label="Erstlösung (A1)" />
         </div>
-        {tech.a0 > 0 ? <div style={{ marginTop: 6, fontSize: 11, color: "#f87171" }}>⚠ A0: {tech.a0.toFixed(1)}%</div> : null}
+        {tech.a0 > 0 ? <div style={{ marginTop: 6, fontSize: 11, color: "#f87171" }}>! A0: {tech.a0.toFixed(1)}%</div> : null}
       </>)}
       {isNFTQ && (<>
         <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>NFTQ Fehlerquoten</div>
@@ -396,7 +396,7 @@ function MassnahmenPanel({ massnahmen, parseError, kontakte }) {
   if (parseError) {
     return (
       <div style={{ marginTop: 16, background: "#2e0f0f", border: "1px solid #7f1d1d", borderRadius: 8, padding: "12px 16px" }}>
-        <div style={{ fontSize: 12, color: "#f87171", fontWeight: 700 }}>⚠ Maßnahmen konnten nicht geladen werden</div>
+        <div style={{ fontSize: 12, color: "#f87171", fontWeight: 700 }}>! Maßnahmen konnten nicht geladen werden</div>
         <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>{parseError}</div>
       </div>
     );
@@ -406,7 +406,7 @@ function MassnahmenPanel({ massnahmen, parseError, kontakte }) {
   const statusColor = { kritisch: "#f87171", warnung: "#fbbf24", gut: "#4ade80" };
   return (
     <div style={{ marginTop: 24 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: "#f9fafb", marginBottom: 12, borderBottom: "1px solid #1f2937", paddingBottom: 8 }}>📋 Maßnahmen pro Techniker</div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: "#f9fafb", marginBottom: 12, borderBottom: "1px solid #1f2937", paddingBottom: 8 }}> Maßnahmen pro Techniker</div>
       {massnahmen.map((m, i) => {
         const k = kontakte[m.name] || {};
         const body = m.status === "gut"
@@ -422,11 +422,11 @@ function MassnahmenPanel({ massnahmen, parseError, kontakte }) {
                 <div style={{ fontSize: 12, color: "#d1d5db", lineHeight: 1.5 }}>{m.massnahme}</div>
               </div>
               <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                <a href={mailto} style={{ background: "#1d4ed8", color: "#fff", padding: "5px 10px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600 }}>📧 Email</a>
-                {waLink ? <a href={waLink} target="_blank" rel="noreferrer" style={{ background: "#15803d", color: "#fff", padding: "5px 10px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600 }}>💬 WA</a> : null}
+                <a href={mailto} style={{ background: "#1d4ed8", color: "#fff", padding: "5px 10px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600 }}> Email</a>
+                {waLink ? <a href={waLink} target="_blank" rel="noreferrer" style={{ background: "#15803d", color: "#fff", padding: "5px 10px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600 }}> WA</a> : null}
               </div>
             </div>
-            {(!k.email && !k.mobil) && <div style={{ marginTop: 6, fontSize: 10, color: "#6b7280" }}>⚠ Keine Kontaktdaten — unter "👥 Kontakte" eintragen</div>}
+            {(!k.email && !k.mobil) && <div style={{ marginTop: 6, fontSize: 10, color: "#6b7280" }}>! Keine Kontaktdaten — unter " Kontakte" eintragen</div>}
           </div>
         );
       })}
@@ -457,8 +457,8 @@ function BaselineEditor({ baselines, onSave, onClose }) {
     <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.85)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 12, padding: 24, width: 620, maxHeight: "85vh", overflowY: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <span style={{ fontWeight: 700, fontSize: 15, color: "#f9fafb" }}>📊 Baseline-Werte verwalten</span>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 18 }}>✕</button>
+          <span style={{ fontWeight: 700, fontSize: 15, color: "#f9fafb" }}> Baseline-Werte verwalten</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 18 }}>x</button>
         </div>
         {Object.entries(standortLabels).map(([standort, standortName]) => (
           <div key={standort} style={{ marginBottom: 16, background: "#0f172a", border: "1px solid #1f2937", borderRadius: 8, padding: "14px 16px" }}>
@@ -470,7 +470,7 @@ function BaselineEditor({ baselines, onSave, onClose }) {
                   onChange={e => setLocal(prev => ({ ...prev, [standort]: { ...prev[standort], [kpi]: parseFloat(e.target.value) || 0 } }))}
                   style={inputStyle} />
                 <button onClick={() => setLocal(prev => { const n = { ...prev, [standort]: { ...prev[standort] } }; delete n[standort][kpi]; return n; })}
-                  style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", borderRadius: 4, cursor: "pointer", fontSize: 11, padding: "3px 8px" }}>✕</button>
+                  style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", borderRadius: 4, cursor: "pointer", fontSize: 11, padding: "3px 8px" }}>x</button>
               </div>
             ))}
             <AddKPIRow onAdd={(kpi, val) => setLocal(prev => ({ ...prev, [standort]: { ...prev[standort], [kpi]: val } }))} />
@@ -480,7 +480,7 @@ function BaselineEditor({ baselines, onSave, onClose }) {
           <button onClick={() => setLocal(JSON.parse(JSON.stringify(DEFAULT_BASELINES)))}
             style={{ flex: 1, background: "#1f2937", color: "#9ca3af", border: "1px solid #374151", borderRadius: 8, padding: "10px", fontSize: 12, cursor: "pointer" }}>🔄 Standard</button>
           <button onClick={() => { onSave(local); onClose(); }}
-            style={{ flex: 2, background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 8, padding: "10px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>💾 Speichern</button>
+            style={{ flex: 2, background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 8, padding: "10px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}> Speichern</button>
         </div>
       </div>
     </div>
@@ -494,8 +494,8 @@ function TechnikerVerwaltung({ gespeichert, onUpdate, onClose }) {
     <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.85)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 12, padding: 24, width: 660, maxHeight: "88vh", overflowY: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <span style={{ fontWeight: 700, fontSize: 15, color: "#f9fafb" }}>🧑‍🔧 Techniker-Einträge verwalten</span>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 18 }}>✕</button>
+          <span style={{ fontWeight: 700, fontSize: 15, color: "#f9fafb" }}> Techniker-Einträge verwalten</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 18 }}>x</button>
         </div>
         {Object.keys(local).length === 0 && <div style={{ textAlign: "center", padding: "30px", color: "#6b7280" }}>Keine Daten geladen.</div>}
         {Object.entries(local).map(([kat, rows]) => (
@@ -512,13 +512,13 @@ function TechnikerVerwaltung({ gespeichert, onUpdate, onClose }) {
                   {t.a1 !== null && <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 8 }}>A1 {t.a1?.toFixed(1)}%</span>}
                 </div>
                 <button onClick={() => setLocal(prev => { const n = { ...prev, [kat]: prev[kat].filter((_, j) => j !== i) }; if (!n[kat].length) delete n[kat]; return n; })}
-                  style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", borderRadius: 4, cursor: "pointer", fontSize: 11, padding: "3px 10px" }}>✕ Löschen</button>
+                  style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", borderRadius: 4, cursor: "pointer", fontSize: 11, padding: "3px 10px" }}>x Löschen</button>
               </div>
             ))}
           </div>
         ))}
         <button onClick={() => { onUpdate(local); onClose(); }}
-          style={{ width: "100%", marginTop: 8, background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 8, padding: "12px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>💾 Änderungen speichern</button>
+          style={{ width: "100%", marginTop: 8, background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 8, padding: "12px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}> Änderungen speichern</button>
       </div>
     </div>
   );
@@ -539,8 +539,8 @@ function KontakteEditor({ kontakte, onSave, onClose }) {
     <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.85)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 12, padding: 24, width: 580, maxHeight: "85vh", overflowY: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <span style={{ fontWeight: 700, fontSize: 15, color: "#f9fafb" }}>👥 Techniker Stammdaten</span>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 18 }}>✕</button>
+          <span style={{ fontWeight: 700, fontSize: 15, color: "#f9fafb" }}> Techniker Stammdaten</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 18 }}>x</button>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "150px 1fr 130px 28px", gap: 8, marginBottom: 8, padding: "0 0 8px", borderBottom: "1px solid #1f2937" }}>
           <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase" }}>Name</div>
@@ -553,11 +553,11 @@ function KontakteEditor({ kontakte, onSave, onClose }) {
             <div style={{ fontSize: 12, color: "#f9fafb", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={name}>{name}</div>
             <input value={k.email || ""} onChange={e => setLocal(prev => ({ ...prev, [name]: { ...prev[name], email: e.target.value } }))} placeholder="email@beispiel.de" style={inputStyle} />
             <input value={k.mobil || ""} onChange={e => setLocal(prev => ({ ...prev, [name]: { ...prev[name], mobil: e.target.value } }))} placeholder="+4915..." style={inputStyle} />
-            <button onClick={() => { const n = { ...local }; delete n[name]; setLocal(n); }} style={{ background: "none", border: "none", color: "#4b5563", cursor: "pointer", fontSize: 16, padding: 0 }}>✕</button>
+            <button onClick={() => { const n = { ...local }; delete n[name]; setLocal(n); }} style={{ background: "none", border: "none", color: "#4b5563", cursor: "pointer", fontSize: 16, padding: 0 }}>x</button>
           </div>
         ))}
         <div style={{ borderTop: "1px solid #1f2937", paddingTop: 16, marginTop: 8 }}>
-          <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>➕ Neuen Techniker hinzufügen:</div>
+          <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>+ Neuen Techniker hinzufügen:</div>
           <div style={{ display: "grid", gridTemplateColumns: "150px 1fr 130px 40px", gap: 8 }}>
             <input value={neuerName} onChange={e => setNeuerName(e.target.value)} placeholder="Vor- Nachname" style={inputStyle} onKeyDown={e => e.key === "Enter" && hinzufuegen()} />
             <input value={neuerEmail} onChange={e => setNeuerEmail(e.target.value)} placeholder="email@beispiel.de" style={inputStyle} onKeyDown={e => e.key === "Enter" && hinzufuegen()} />
@@ -566,7 +566,7 @@ function KontakteEditor({ kontakte, onSave, onClose }) {
           </div>
         </div>
         <button onClick={() => { onSave(local); onClose(); }}
-          style={{ width: "100%", marginTop: 20, background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 8, padding: "12px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>💾 Speichern</button>
+          style={{ width: "100%", marginTop: 20, background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 8, padding: "12px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}> Speichern</button>
       </div>
     </div>
   );
@@ -590,8 +590,8 @@ function ArchivPanel({ archiv, onDelete, onClose }) {
     <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.88)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 12, padding: 24, width: 680, maxHeight: "88vh", overflowY: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <span style={{ fontWeight: 700, fontSize: 15, color: "#f9fafb" }}>🗂 KPI-Archiv</span>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 18 }}>✕</button>
+          <span style={{ fontWeight: 700, fontSize: 15, color: "#f9fafb" }}> KPI-Archiv</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 18 }}>x</button>
         </div>
         {archiv.length === 0 && <div style={{ textAlign: "center", padding: "40px", color: "#6b7280" }}>Noch keine archivierten Einträge.</div>}
         {[...archiv].reverse().map((eintrag, i) => {
@@ -608,15 +608,15 @@ function ArchivPanel({ archiv, onDelete, onClose }) {
                   <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>
                     {totalTechs} Techniker
                     {kritisch > 0 ? <span style={{ color: "#f87171", marginLeft: 8 }}>· {kritisch} kritisch</span> : null}
-                    {eintrag.analyse ? <span style={{ color: "#4ade80", marginLeft: 8 }}>· KI ✓</span> : null}
+                    {eintrag.analyse ? <span style={{ color: "#4ade80", marginLeft: 8 }}>· KI ok</span> : null}
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <button onClick={e => { e.stopPropagation(); exportCSV(eintrag); }}
                     style={{ background: "#1f2937", color: "#9ca3af", border: "1px solid #374151", borderRadius: 4, cursor: "pointer", fontSize: 10, padding: "3px 8px" }}>📥 CSV</button>
                   <button onClick={e => { e.stopPropagation(); if (window.confirm("Eintrag löschen?")) onDelete(idx); }}
-                    style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", borderRadius: 4, cursor: "pointer", fontSize: 10, padding: "3px 8px" }}>✕</button>
-                  <span style={{ color: "#6b7280", fontSize: 14 }}>{isOpen ? "▲" : "▼"}</span>
+                    style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", borderRadius: 4, cursor: "pointer", fontSize: 10, padding: "3px 8px" }}>x</button>
+                  <span style={{ color: "#6b7280", fontSize: 14 }}>{isOpen ? "^" : "v"}</span>
                 </div>
               </div>
               {isOpen && (
@@ -651,12 +651,8 @@ function ArchivPanel({ archiv, onDelete, onClose }) {
 export default function KPIAgent() {
   const [gespeichert, setGespeichert] = useState({});
   const [kontakte, setKontakte] = useState({});
-  const [baselines, setBaselines] = useState(() => {
-    try { const s = localStorage.getItem(BASELINE_KEY); return s ? JSON.parse(s) : DEFAULT_BASELINES; } catch(e) { return DEFAULT_BASELINES; }
-  });
-  const [archiv, setArchiv] = useState(() => {
-    try { const s = localStorage.getItem(ARCHIV_KEY); return s ? JSON.parse(s) : []; } catch(e) { return []; }
-  });
+  const [baselines, setBaselines] = useState(DEFAULT_BASELINES);
+  const [archiv, setArchiv] = useState([]);
   const [aktiveKategorie, setAktiveKategorie] = useState("alle");
   const [aiAnalysis, setAiAnalysis] = useState("");
   const [massnahmen, setMassnahmen] = useState([]);
@@ -680,6 +676,10 @@ export default function KPIAgent() {
       if (saved) setGespeichert(JSON.parse(saved));
       const savedK = localStorage.getItem(KONTAKTE_KEY);
       if (savedK) setKontakte(JSON.parse(savedK));
+      const savedB = localStorage.getItem(BASELINE_KEY);
+      if (savedB) setBaselines(JSON.parse(savedB));
+      const savedA = localStorage.getItem(ARCHIV_KEY);
+      if (savedA) setArchiv(JSON.parse(savedA));
     } catch(e) {}
   }, []);
 
@@ -713,7 +713,7 @@ export default function KPIAgent() {
     const quelle = quellen.length === 1 ? quellen[0] : "standard";
     if (loading) {
       setPending({ rows, quelle });
-      setError("✓ Gespeichert — wird nach Analyse geladen");
+      setError("ok Gespeichert — wird nach Analyse geladen");
     } else {
       setGespeichert(prev => ({ ...prev, [quelle]: rows }));
       setAktiveKategorie(quelle);
@@ -995,30 +995,30 @@ export default function KPIAgent() {
                 {tech.a1 !== null && <span style={{ fontSize: 10, background: "#1f2937", color: "#9ca3af", padding: "2px 8px", borderRadius: 3 }}>A1 {tech.a1.toFixed(1)}%</span>}
                 {tech.a0 !== null && tech.a0 > 0 && <span style={{ fontSize: 10, background: "#2e0f0f", color: "#f87171", padding: "2px 8px", borderRadius: 3 }}>A0 {tech.a0.toFixed(1)}%</span>}
               </div>
-              {isLoadingThis && <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>⏳ KI bewertet...</div>}
+              {isLoadingThis && <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>... KI bewertet...</div>}
               {bew && !isLoadingThis && (
                 <div style={{ background: "#0f172a", borderRadius: 6, padding: "10px 12px", marginBottom: 10 }}>
                   <div style={{ fontSize: 12, color: "#d1d5db", lineHeight: 1.6, marginBottom: 8 }}>{bew.kommentar}</div>
                   <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-                    {bew.staerken?.map((s, si) => <span key={si} style={{ fontSize: 10, color: "#4ade80" }}>✓ {s}</span>)}
+                    {bew.staerken?.map((s, si) => <span key={si} style={{ fontSize: 10, color: "#4ade80" }}>ok {s}</span>)}
                     {bew.schwaechen?.map((s, si) => <span key={si} style={{ fontSize: 10, color: "#f87171" }}>✗ {s}</span>)}
                   </div>
-                  {bew.massnahme && <div style={{ fontSize: 11, color: "#fbbf24", marginTop: 6 }}>→ {bew.massnahme}</div>}
+                  {bew.massnahme && <div style={{ fontSize: 11, color: "#fbbf24", marginTop: 6 }}>-> {bew.massnahme}</div>}
                 </div>
               )}
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {!bew && !isLoadingThis && (
                   <button onClick={() => bewerteEinzelTechniker(tech)}
-                    style={{ background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 5, cursor: "pointer", fontSize: 11, padding: "5px 12px", fontWeight: 600 }}>🤖 Bewerten</button>
+                    style={{ background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 5, cursor: "pointer", fontSize: 11, padding: "5px 12px", fontWeight: 600 }}> Bewerten</button>
                 )}
                 {bew && k.email && (
-                  <a href={mailto} style={{ background: "#1d4ed8", color: "#fff", padding: "5px 12px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600 }}>📧 Mail senden</a>
+                  <a href={mailto} style={{ background: "#1d4ed8", color: "#fff", padding: "5px 12px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600 }}> Mail senden</a>
                 )}
-                {bew && !k.email && <span style={{ fontSize: 10, color: "#6b7280" }}>⚠ Keine Email — unter 👥 eintragen</span>}
+                {bew && !k.email && <span style={{ fontSize: 10, color: "#6b7280" }}>! Keine Email — unter  eintragen</span>}
                 {k.mobil && bew && (
                   <a href={`https://wa.me/${k.mobil.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(`Hallo ${tech.name.split(" ")[0]}, Ihr KPI-Score: ${score}/10 — ${scoreLabel(score)}. ${bew?.massnahme || ""}`)}`}
                     target="_blank" rel="noreferrer"
-                    style={{ background: "#15803d", color: "#fff", padding: "5px 12px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600 }}>💬 WhatsApp</a>
+                    style={{ background: "#15803d", color: "#fff", padding: "5px 12px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600 }}> WhatsApp</a>
                 )}
               </div>
             </div>
@@ -1063,28 +1063,28 @@ export default function KPIAgent() {
           </div>
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          <button onClick={() => setShowKontakte(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>👥 Kontakte</button>
-          <button onClick={() => setShowBaseline(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>📊 Baselines</button>
-          <button onClick={() => setShowTechVerwaltung(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>🧑‍🔧 Techniker</button>
-          <button onClick={() => setShowArchiv(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>🗂 Archiv{archiv.length > 0 ? ` (${archiv.length})` : ""}</button>
+          <button onClick={() => setShowKontakte(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}> Kontakte</button>
+          <button onClick={() => setShowBaseline(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}> Baselines</button>
+          <button onClick={() => setShowTechVerwaltung(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}> Techniker</button>
+          <button onClick={() => setShowArchiv(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}> Archiv{archiv.length > 0 ? ` (${archiv.length})` : ""}</button>
           <label style={{ background: loading ? "#1a2e1a" : "#1f2937", color: loading ? "#4ade80" : "#9ca3af", border: `1px solid ${loading ? "#14532d" : "#374151"}`, padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>
-            {loading ? "⏳ Nächste" : "📂 Upload"}
+            {loading ? "... Nächste" : " Upload"}
             <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} style={{ display: "none" }} />
           </label>
-          {angezeigt.length > 0 && <button onClick={exportPDF} disabled={exporting} style={{ background: "#1f2937", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>📄 PDF</button>}
-          {aktiveKategorie !== "alle" && gespeichert[aktiveKategorie] && <button onClick={() => loescheKategorie(aktiveKategorie)} style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>🗑 {KATEGORIEN.find(k => k.id === aktiveKategorie)?.label} löschen</button>}
-          <button onClick={() => { window.location.reload(); }} style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>🔒 Logout</button>
+          {angezeigt.length > 0 && <button onClick={exportPDF} disabled={exporting} style={{ background: "#1f2937", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}> PDF</button>}
+          {aktiveKategorie !== "alle" && gespeichert[aktiveKategorie] && <button onClick={() => loescheKategorie(aktiveKategorie)} style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 700 }}> {KATEGORIEN.find(k => k.id === aktiveKategorie)?.label} löschen</button>}
+          <button onClick={() => { window.location.reload(); }} style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}> Logout</button>
         </div>
       </div>
 
       <div ref={dashboardRef} style={{ maxWidth: 720, margin: "0 auto", padding: "24px 20px" }}>
         {!hatDaten && (
           <div style={{ textAlign: "center", padding: "60px 20px" }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>📁</div>
+            <div style={{ fontSize: 36, marginBottom: 12 }}></div>
             <div style={{ fontSize: 18, fontWeight: 700, color: "#f9fafb", marginBottom: 8 }}>Telekom-Export hochladen</div>
             <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 24 }}>Wird automatisch der richtigen Kategorie zugeordnet</div>
             <label style={{ display: "inline-block", background: "#1d4ed8", color: "#fff", padding: "10px 24px", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
-              📂 Datei wählen (.csv / .xlsx)
+               Datei wählen (.csv / .xlsx)
               <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} style={{ display: "none" }} />
             </label>
             {error ? <div style={{ marginTop: 16, color: "#4ade80", fontSize: 13 }}>{error}</div> : null}
@@ -1095,7 +1095,7 @@ export default function KPIAgent() {
           <div style={{ textAlign: "center", padding: "40px 20px" }}>
             <div style={{ fontSize: 14, color: "#6b7280", marginBottom: 16 }}>Noch keine Daten für "{KATEGORIEN.find(k => k.id === aktiveKategorie)?.label}"</div>
             <label style={{ display: "inline-block", background: "#1d4ed8", color: "#fff", padding: "10px 24px", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
-              📂 Export hochladen
+               Export hochladen
               <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} style={{ display: "none" }} />
             </label>
           </div>
@@ -1103,7 +1103,7 @@ export default function KPIAgent() {
 
         {angezeigt.length > 0 && (
           <>
-            {pending && <div style={{ fontSize: 11, color: "#4ade80", marginBottom: 8 }}>⏳ Nächste Datei bereit</div>}
+            {pending && <div style={{ fontSize: 11, color: "#4ade80", marginBottom: 8 }}>... Nächste Datei bereit</div>}
             {error && <div style={{ fontSize: 11, color: "#4ade80", marginBottom: 8 }}>{error}</div>}
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 20 }}>
@@ -1128,8 +1128,8 @@ export default function KPIAgent() {
             <div style={{ display: "flex", marginBottom: 16, borderBottom: "1px solid #1f2937" }}>
               {[
                 { id: "dashboard", label: "Dashboard" },
-                { id: "firmendashboard", label: `🏢 Firmendashboard${Object.keys(techBewertungen).length > 0 ? ` (${Object.keys(techBewertungen).length})` : ""}` },
-                { id: "analyse", label: "KI-Analyse" + (aiAnalysis ? " ✓" : "") },
+                { id: "firmendashboard", label: ` Firmendashboard${Object.keys(techBewertungen).length > 0 ? ` (${Object.keys(techBewertungen).length})` : ""}` },
+                { id: "analyse", label: "KI-Analyse" + (aiAnalysis ? " ok" : "") },
               ].map(tab => (
                 <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                   style={{ background: "none", border: "none", borderBottom: activeTab === tab.id ? "2px solid #3b82f6" : "2px solid transparent", color: activeTab === tab.id ? "#f9fafb" : "#6b7280", padding: "8px 14px", cursor: "pointer", fontSize: 12, fontWeight: activeTab === tab.id ? 600 : 400, marginBottom: -1, whiteSpace: "nowrap" }}>
@@ -1144,15 +1144,15 @@ export default function KPIAgent() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <button onClick={runAnalysis} disabled={loading}
                     style={{ width: "100%", background: loading ? "#1f2937" : "#1d4ed8", color: loading ? "#6b7280" : "#fff", border: "none", borderRadius: 8, padding: "14px", fontSize: 14, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer" }}>
-                    {loading ? "⏳ KI analysiert..." : "🤖 Team-Analyse starten"}
+                    {loading ? "... KI analysiert..." : " Team-Analyse starten"}
                   </button>
                   <button onClick={bewerteAlle}
                     style={{ width: "100%", background: "#0f172a", color: "#60a5fa", border: "1px solid #1e3a5f", borderRadius: 8, padding: "12px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                    🏢 Alle bewerten → Firmendashboard
+                     Alle bewerten -> Firmendashboard
                   </button>
                   <button onClick={archivieren}
                     style={{ width: "100%", background: "#0f172a", color: "#6b7280", border: "1px solid #1f2937", borderRadius: 8, padding: "10px", fontSize: 12, cursor: "pointer" }}>
-                    🗂 Archivieren & Dashboard leeren
+                     Archivieren & Dashboard leeren
                   </button>
                 </div>
               </>
@@ -1163,7 +1163,7 @@ export default function KPIAgent() {
             {activeTab === "analyse" && (
               <div>
                 {!aiAnalysis && !loading && <div style={{ textAlign: "center", padding: "40px", color: "#6b7280" }}>Noch keine Analyse. Dashboard öffnen und starten.</div>}
-                {loading && <div style={{ textAlign: "center", padding: "40px", color: "#6b7280" }}>⏳ KI analysiert...</div>}
+                {loading && <div style={{ textAlign: "center", padding: "40px", color: "#6b7280" }}>... KI analysiert...</div>}
                 {aiAnalysis && (
                   <>
                     <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8, padding: "20px", fontSize: 13, lineHeight: 1.8, color: "#d1d5db" }}
