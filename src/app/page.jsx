@@ -857,16 +857,17 @@ export default function KPIAgent() {
       const alleMassnahmen = angezeigt.map(t => {
         const bl = String(t.standort) === "5336" ? (baselines.fs5336 || DEFAULT_BASELINES.fs5336) : (baselines.fs5335 || DEFAULT_BASELINES.fs5335);
         const statusList = [];
-        if (t.cc_rate !== null && bl.cc_rate) statusList.push(getStatus(t.cc_rate, bl.cc_rate));
-        if (t.termintreue !== null && bl.termintreue) statusList.push(getStatus(t.termintreue, bl.termintreue));
-        if (t.loesungsquote !== null && bl.loesungsquote) statusList.push(getStatus(t.loesungsquote, bl.loesungsquote));
-        if (t.nps !== null && t.nps !== undefined) statusList.push(getNPSStatus(t.nps));
-        if (t.a1 !== null && t.a1 !== undefined) statusList.push(t.a1 >= 60 ? "gut" : t.a1 >= 45 ? "warnung" : "kritisch");
-        if (t.a0 !== null && t.a0 !== undefined && t.a0 > 10) statusList.push("kritisch");
-        if (t.nftq_b !== null) statusList.push(t.nftq_b <= 4 ? "gut" : t.nftq_b <= 8 ? "warnung" : "kritisch");
-        if (t.nftq_s !== null) statusList.push(t.nftq_s <= 4 ? "gut" : t.nftq_s <= 8 ? "warnung" : "kritisch");
-        if (t.nftq_m !== null) statusList.push(t.nftq_m <= 4 ? "gut" : t.nftq_m <= 8 ? "warnung" : "kritisch");
-        if (t.nftq_p !== null) statusList.push(t.nftq_p <= 4 ? "gut" : t.nftq_p <= 8 ? "warnung" : "kritisch");
+        const v = (x) => x !== null && x !== undefined && !isNaN(x);
+        if (v(t.cc_rate) && bl.cc_rate) statusList.push(getStatus(t.cc_rate, bl.cc_rate));
+        if (v(t.termintreue) && bl.termintreue) statusList.push(getStatus(t.termintreue, bl.termintreue));
+        if (v(t.loesungsquote) && bl.loesungsquote) statusList.push(getStatus(t.loesungsquote, bl.loesungsquote));
+        if (v(t.nps)) statusList.push(getNPSStatus(t.nps));
+        if (v(t.a1)) statusList.push(t.a1 >= 60 ? "gut" : t.a1 >= 45 ? "warnung" : "kritisch");
+        if (v(t.a0) && t.a0 > 10) statusList.push("kritisch");
+        if (v(t.nftq_b)) statusList.push(t.nftq_b <= 4 ? "gut" : t.nftq_b <= 8 ? "warnung" : "kritisch");
+        if (v(t.nftq_s)) statusList.push(t.nftq_s <= 4 ? "gut" : t.nftq_s <= 8 ? "warnung" : "kritisch");
+        if (v(t.nftq_m)) statusList.push(t.nftq_m <= 4 ? "gut" : t.nftq_m <= 8 ? "warnung" : "kritisch");
+        if (v(t.nftq_p)) statusList.push(t.nftq_p <= 4 ? "gut" : t.nftq_p <= 8 ? "warnung" : "kritisch");
         const worst = statusList.length === 0 ? "gut" : statusList.includes("kritisch") ? "kritisch" : statusList.includes("warnung") ? "warnung" : "gut";
         const nps_val = t.nps !== null ? t.nps : 0;
         const cc_val = t.cc_rate !== null ? t.cc_rate : 0;
