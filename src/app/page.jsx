@@ -8,9 +8,33 @@ import html2canvas from "html2canvas";
 const BASELINE_KEY = "fibernc_baselines";
 const ARCHIV_KEY = "fibernc_archiv";
 const DEFAULT_BASELINES = {
-  gesamt: { cc_rate: 97.6, termintreue: 97.7, loesungsquote: 96.0, nps: 69.9 },
-  fs5335: { cc_rate: 99.6, termintreue: 99.1, loesungsquote: 96.9, nps: 74.4 },
-  fs5336: { cc_rate: 95.7, termintreue: 96.7, loesungsquote: 97.2, nps: 66.7 },
+  gesamt: {
+    // SMS-Feedback
+    cc_rate: 95,           // Courtesy Calls Zielwert
+    termintreue: 96,       // Termintreue Zielwert
+    loesungsquote: 95,     // Loesungsquote Bereitstellung
+    nps: 67,               // NPS Montage/Problembehebung
+    // NFTQ
+    nftq_montage: 4,       // NFTQ Montage Zielwert
+    nftq_schalten: 7,      // NFTQ Schalten Zielwert
+    nftq_pb: 8.7,          // NFTQ Problembehebung Zielwert
+    nftq_bereitstellung: 4,// NFTQ Bereitstellung Zielwert
+    // Sonstige
+    geplatzte_termine: 0.6,// Geplatzte Termine Zielwert
+    info_quote_pb: 87.5,   // Informationsquote PB
+    so_quote: 2,           // SO-Quote
+    service_calls: 93,     // Service Calls Carrier
+  },
+  fs5335: {
+    cc_rate: 95, termintreue: 96, loesungsquote: 95, nps: 67,
+    nftq_montage: 4, nftq_schalten: 7, nftq_pb: 8.7, nftq_bereitstellung: 4,
+    geplatzte_termine: 0.6, info_quote_pb: 87.5, so_quote: 2, service_calls: 93,
+  },
+  fs5336: {
+    cc_rate: 95, termintreue: 96, loesungsquote: 95, nps: 67,
+    nftq_montage: 4, nftq_schalten: 7, nftq_pb: 8.7, nftq_bereitstellung: 4,
+    geplatzte_termine: 0.6, info_quote_pb: 87.5, so_quote: 2, service_calls: 93,
+  },
 };
 const OT_BASELINE = { a_ges: 95.0, a1: 60.0 };
 const STORAGE_KEY = "fibernc_kpi_v2";
@@ -31,13 +55,27 @@ FS5335: CC=${bl.fs5335.cc_rate}% | Termintreue=${bl.fs5335.termintreue}% | Lösu
 FS5336: CC=${bl.fs5336.cc_rate}% | Termintreue=${bl.fs5336.termintreue}% | Lösungsquote=${bl.fs5336.loesungsquote}%
 KW20 schlechteste Woche (NPS 26, Termintreue 85,7%). KW23-24 FS5336 kritisch: CC 70%, SearchCall 37%.
 OneTouch: A1=erster Besuch erledigt (Ziel >=60%), AX=Abbruch, A0=nicht erledigt (kritisch >10%).
-Aufgabe: Techniker-KPIs bewerten, Leitstellen-Empfehlungen. Wenn Vorperioden-Daten vorhanden, Trend (Verbesserung/Verschlechterung) je Techniker angeben mit Pfeil (gestiegen/gesunken).
-Echte Telekom-Zielwerte (aus Maßnahmenplan):
-- CC-Rate (Service Calls): Ziel >= 96%, Warnung < 96%, Kritisch < 85%
-- Termintreue: Ziel >= 97%, Warnung < 97%, Kritisch < 85%
-- NPS: Ziel >= 50, Warnung 20-49, Kritisch < 20
-- NFTQ: Ziel <= 4%, Warnung 4-8%, Kritisch > 8%
-Frühwarnung bei Abweichung >= 7% vom Zielwert.
+Aufgabe: Techniker-KPIs bewerten, Leitstellen-Empfehlungen. Wenn Vorperioden-Daten vorhanden, Trend je Techniker angeben.
+
+Telekom-Zielwerte (alle verbindlich):
+SMS-Feedback/Schalten:
+- Courtesy Calls (CC-Rate): Ziel >= 95%, Warnung < 95%, Kritisch < 85%
+- Termintreue: Ziel >= 96%, Warnung < 96%, Kritisch < 85%
+- Loesungsquote: Ziel >= 95%
+- NPS Montage/Bereitstellung: Ziel >= 67, Warnung 20-66, Kritisch < 20
+- NPS Problembehebung: Ziel >= 67
+- Informationsquote PB: Ziel >= 87.5%
+- Geplatzte Termine: Ziel <= 0.6%, Kritisch > 2%
+- SO-Quote: Ziel <= 2%, Kritisch > 4%
+- Service Calls Carrier: Ziel >= 93%
+NFTQ:
+- NFTQ Bereitstellung: Ziel <= 4%, Warnung 4-8%, Kritisch > 8%
+- NFTQ Schalten: Ziel <= 7%, Warnung 7-10%, Kritisch > 10%
+- NFTQ Montage: Ziel <= 4%, Warnung 4-8%, Kritisch > 8%
+- NFTQ Problembehebung: Ziel <= 8.7%, Kritisch > 12%
+OneTouch:
+- A1-Quote: Ziel >= 60%, Warnung 45-59%, Kritisch < 45%
+- A0-Quote: Ziel <= 5%, Kritisch > 10%
 Antworte auf Deutsch, direkt und operativ.
 
 PFLICHT - IMMER AM ENDE - JEDEN TECHNIKER AUFLISTEN - AUCH GUTE:
@@ -302,9 +340,11 @@ function KPIBar({ value, baseline, label, trend }) {
   );
 }
 
-function NFTQBar({ value, label }) {
+function NFTQBar({ value, label, ziel, warn }) {
   if (value === null || isNaN(value)) return null;
-  const color = value > 8 ? "#f87171" : value > 4 ? "#fbbf24" : "#4ade80";
+  const z = ziel || 4;
+  const w = warn || 8;
+  const color = value > w ? "#f87171" : value > z ? "#fbbf24" : "#4ade80";
   return (
     <div style={{ marginBottom: 6 }}>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#9ca3af", marginBottom: 2 }}>
@@ -1019,10 +1059,10 @@ export default function KPIAgent() {
         if (v(t.nps)) statusList.push(getNPSStatus(t.nps));
         if (v(t.a1)) statusList.push(t.a1 >= 60 ? "gut" : t.a1 >= 45 ? "warnung" : "kritisch");
         if (v(t.a0) && t.a0 > 10) statusList.push("kritisch");
-        if (v(t.nftq_b)) statusList.push(t.nftq_b <= 4 ? "gut" : t.nftq_b <= 8 ? "warnung" : "kritisch");
-        if (v(t.nftq_s)) statusList.push(t.nftq_s <= 4 ? "gut" : t.nftq_s <= 8 ? "warnung" : "kritisch");
-        if (v(t.nftq_m)) statusList.push(t.nftq_m <= 4 ? "gut" : t.nftq_m <= 8 ? "warnung" : "kritisch");
-        if (v(t.nftq_p)) statusList.push(t.nftq_p <= 4 ? "gut" : t.nftq_p <= 8 ? "warnung" : "kritisch");
+        if (v(t.nftq_b)) statusList.push(t.nftq_b <= 4 ? "gut" : t.nftq_b <= 8 ? "warnung" : "kritisch");   // Bereitstellung: Ziel 4%
+        if (v(t.nftq_s)) statusList.push(t.nftq_s <= 7 ? "gut" : t.nftq_s <= 10 ? "warnung" : "kritisch");  // Schalten: Ziel 7%
+        if (v(t.nftq_m)) statusList.push(t.nftq_m <= 4 ? "gut" : t.nftq_m <= 8 ? "warnung" : "kritisch");   // Montage: Ziel 4%
+        if (v(t.nftq_p)) statusList.push(t.nftq_p <= 8.7 ? "gut" : t.nftq_p <= 12 ? "warnung" : "kritisch"); // Problembehebung: Ziel 8.7%
         const worst = statusList.length === 0 ? "gut" : statusList.includes("kritisch") ? "kritisch" : statusList.includes("warnung") ? "warnung" : "gut";
         const nps_val = t.nps !== null ? t.nps : 0;
         const cc_val = t.cc_rate !== null ? t.cc_rate : 0;
