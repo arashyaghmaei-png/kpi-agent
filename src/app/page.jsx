@@ -163,7 +163,7 @@ function parseCSV(text) {
 }
 
 function getNPSStatus(nps) {
-  if (nps === null || nps === undefined || isNaN(nps)) return null;
+  if (nps === null || nps === undefined || isNaN(nps) || nps === "undefined") return null;
   if (nps < 20) return "kritisch";  // Unter 20 = kritisch
   if (nps < 50) return "warnung";   // Telekom-Zielwert >= 50
   return "gut";
@@ -854,17 +854,15 @@ export default function KPIAgent() {
       setAiAnalysis(text);
 
       // Massnahmen fuer jeden Techniker berechnen
-      const saeedDebug = angezeigt.find(t => t.name.includes("Saeed") || t.name.includes("Havend"));
-      if (saeedDebug) alert("Saeed: nftq_b=" + saeedDebug.nftq_b + " nftq_s=" + saeedDebug.nftq_s + " nps=" + saeedDebug.nps + " cc=" + saeedDebug.cc_rate + " quelle=" + saeedDebug.quelle);
       const alleMassnahmen = angezeigt.map(t => {
         const bl = String(t.standort) === "5336" ? (baselines.fs5336 || DEFAULT_BASELINES.fs5336) : (baselines.fs5335 || DEFAULT_BASELINES.fs5335);
         const statusList = [];
         if (t.cc_rate !== null && bl.cc_rate) statusList.push(getStatus(t.cc_rate, bl.cc_rate));
         if (t.termintreue !== null && bl.termintreue) statusList.push(getStatus(t.termintreue, bl.termintreue));
         if (t.loesungsquote !== null && bl.loesungsquote) statusList.push(getStatus(t.loesungsquote, bl.loesungsquote));
-        if (t.nps !== null) statusList.push(getNPSStatus(t.nps));
-        if (t.a1 !== null) statusList.push(t.a1 >= 60 ? "gut" : t.a1 >= 45 ? "warnung" : "kritisch");
-        if (t.a0 !== null && t.a0 > 10) statusList.push("kritisch");
+        if (t.nps !== null && t.nps !== undefined) statusList.push(getNPSStatus(t.nps));
+        if (t.a1 !== null && t.a1 !== undefined) statusList.push(t.a1 >= 60 ? "gut" : t.a1 >= 45 ? "warnung" : "kritisch");
+        if (t.a0 !== null && t.a0 !== undefined && t.a0 > 10) statusList.push("kritisch");
         if (t.nftq_b !== null) statusList.push(t.nftq_b <= 4 ? "gut" : t.nftq_b <= 8 ? "warnung" : "kritisch");
         if (t.nftq_s !== null) statusList.push(t.nftq_s <= 4 ? "gut" : t.nftq_s <= 8 ? "warnung" : "kritisch");
         if (t.nftq_m !== null) statusList.push(t.nftq_m <= 4 ? "gut" : t.nftq_m <= 8 ? "warnung" : "kritisch");
