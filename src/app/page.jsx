@@ -820,8 +820,9 @@ export default function KPIAgent() {
       const text = data.content?.map(b => b.text || "").join("") || "";
       setAiAnalysis(text);
 
-      // Automatisch Massnahmen fuer jeden Techniker generieren
-      const alleMassnahmen = angezeigt.map(t => {
+      // Massnahmen generieren - simpelste Version
+      try {
+        const alleMassnahmen = angezeigt.map(t => {
         const bl = String(t.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
         const statusList = [];
         // Standard KPIs
@@ -856,9 +857,12 @@ export default function KPIAgent() {
           betreff: String(worst === "gut" ? "Lob: Sehr gute KPI-Leistung" : worst === "warnung" ? "KPI Verbesserung" : "Dringend: KPI kritisch")
         };
         return safeReturn;
-      });
-      setMassnahmen(alleMassnahmen.filter(m => m && m.name));
-      setMassnahmenFehler(null);
+        });
+        setMassnahmen(alleMassnahmen);
+        setMassnahmenFehler(null);
+      } catch(massErr) {
+        setMassnahmenFehler("Fehler: " + massErr.message);
+      }
 
       setActiveTab("analyse");
     } catch (e) { setError("Fehler bei der KI-Analyse."); }
