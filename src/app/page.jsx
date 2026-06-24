@@ -1194,7 +1194,7 @@ export default function KPIAgent() {
                   <>
                     <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8, padding: "20px", fontSize: 13, lineHeight: 1.8, color: "#d1d5db" }}
                       dangerouslySetInnerHTML={{ __html: renderMarkdown(aiAnalysis) }} />
-                    <MassnahmenPanel massnahmen={berechneMassnahmen(angezeigt, baselines)} parseError={null} kontakte={kontakte} />
+                    <MassnahmenPanel massnahmen={massnahmen} parseError={massnahmenFehler} kontakte={kontakte} />
                   </>
                 )}
               </div>
