@@ -161,7 +161,9 @@ function autoDetectType(headers) {
   const h = headers.map(x => String(x || "").toLowerCase());
   if (h.some(x => x.includes("nftq") || x.includes("fehlerquote"))) return "nftq";
   if (h.some(x => x.includes("a1") || x.includes("onetouch") || x.includes("erstlosung"))) return "onetouch";
+  if (h.some(x => x.includes("courtesy call") || x.includes("abschluss call") || x.includes("termintreue mit st"))) return "smsfeedbackschalten";
   if (h.some(x => x.includes("schalten") || x.includes("schalt"))) return "smsfeedbackschalten";
+  if (h.some(x => x.includes("cc anzahl") || x.includes("nps bs") || x.includes("nps pb") || x.includes("infoquote"))) return "smsfeedback";
   if (h.some(x => x.includes("nps") || x.includes("feedback") || x.includes("sms"))) return "smsfeedback";
   if (h.some(x => x.includes("bemerkung") || x.includes("sterne") || x.includes("anliegen"))) return "smsfeedback";
   return null;
@@ -191,8 +193,38 @@ function normalizeRows(rawRows) {
       const rawStandort = String(get(row, "standort") || "").trim();
       const standortKlar = rawStandort === "5335" || rawStandort === "5336";
       const standort = standortKlar ? rawStandort : "5335";
-      if (fmt === "smsfeedback") return { name, standort: String(get(row, "od") || "5335"), cc_rate: parsePercent(get(row, "cc")), termintreue: parsePercent(get(row, "termintreue")), loesungsquote: null, nps: parsePercent(get(row, "nps pb", "nps bs")), auftraege: get(row, "anzahl") || "-", quelle: "smsfeedback", standortUnbekannt: false };
-      if (fmt === "smsfeedbackschalten") return { name, standort: "5335", cc_rate: parsePercent(get(row, "courtesy call")), termintreue: parsePercent(get(row, "termintreue mit st vo", "termintreue ohne st vo")), loesungsquote: null, nps: parsePercent(get(row, "nps")), auftraege: get(row, "anzahl") || "-", quelle: "smsfeedbackschalten", standortUnbekannt: false };
+      if (fmt === "smsfeedback") {
+        // NPS: direkt als Zahl (z.B. 100, 50, 33) oder als Prozent
+        const npsRaw = get(row, "nps pb") ?? get(row, "nps bs") ?? get(row, "nps");
+        const npsVal = npsRaw !== null && npsRaw !== undefined ? parseFloat(String(npsRaw).replace(",", ".").replace("%","")) : null;
+        return { 
+          name, 
+          standort: String(get(row, "od") || "5335"), 
+          cc_rate: parsePercent(get(row, "cc")), 
+          termintreue: parsePercent(get(row, "termintreue")),
+          loesungsquote: parsePercent(get(row, "erledigt b") ?? get(row, "erledigt")),
+          infoquote_p: parsePercent(get(row, "infoquote p")),
+          geplatzte_termine: parsePercent(get(row, "t. geplatz")),
+          sterne: parseFloat(String(get(row, "sterne") || "").replace(",",".")) || null,
+          anzahl_nps: parseInt(get(row, "anzahl nps gesamt")) || null,
+          nps: isNaN(npsVal) ? null : npsVal,
+          auftraege: get(row, "anzahl") || "-", 
+          quelle: "smsfeedback", 
+          standortUnbekannt: false 
+        };
+      }
+      if (fmt === "smsfeedbackschalten") {
+        const npsRaw = get(row, "nps");
+        const npsVal = npsRaw !== null && npsRaw !== undefined ? parseFloat(String(npsRaw).replace(",", ".")) : null;
+        return { name, standort: "5335", 
+          cc_rate: parsePercent(get(row, "courtesy call")), 
+          termintreue: parsePercent(get(row, "termintreue mit st vo") ?? get(row, "termintreue ohne st vo")),
+          loesungsquote: parsePercent(get(row, "erledigt")),
+          nps: isNaN(npsVal) ? null : npsVal,
+          auftraege: get(row, "anzahl") || "-",
+          anzahl_nps: parseInt(get(row, "anzahl nps")) || null,
+          quelle: "smsfeedbackschalten", standortUnbekannt: false };
+      }
       if (fmt === "nftq") return { name, standort: "5335", cc_rate: null, termintreue: null, loesungsquote: null, nftq_b: parsePercent(get(row, "nftq b")), nftq_s: parsePercent(get(row, "nftq s")), nftq_m: parsePercent(get(row, "nftq m")), nftq_p: parsePercent(get(row, "nftq p")), auftraege: get(row, "anzahl") || "-", menge_b: parseInt(get(row, "bereitstellung")) || null, menge_s: parseInt(get(row, "schalten")) || null, menge_m: parseInt(get(row, "montage")) || null, menge_p: parseInt(get(row, "problembehebung")) || null, quelle: "nftq", standortUnbekannt: false };
       return { name, standort, cc_rate: parsePercent(get(row, "cc_rate")), termintreue: parsePercent(get(row, "termintreue")), loesungsquote: parsePercent(get(row, "loesungsquote")), nps: parsePercent(get(row, "nps")), auftraege: get(row, "auftraege") || "-", quelle: "standard", standortUnbekannt: !standortKlar };
     });
