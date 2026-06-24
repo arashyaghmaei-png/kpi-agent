@@ -855,11 +855,11 @@ export default function KPIAgent() {
 
       // Massnahmen fuer jeden Techniker berechnen
       const alleMassnahmen = angezeigt.map(t => {
-        const bl = String(t.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
+        const bl = String(t.standort) === "5336" ? (baselines.fs5336 || DEFAULT_BASELINES.fs5336) : (baselines.fs5335 || DEFAULT_BASELINES.fs5335);
         const statusList = [];
-        if (t.cc_rate !== null) statusList.push(getStatus(t.cc_rate, bl.cc_rate));
-        if (t.termintreue !== null) statusList.push(getStatus(t.termintreue, bl.termintreue));
-        if (t.loesungsquote !== null) statusList.push(getStatus(t.loesungsquote, bl.loesungsquote));
+        if (t.cc_rate !== null && bl.cc_rate) statusList.push(getStatus(t.cc_rate, bl.cc_rate));
+        if (t.termintreue !== null && bl.termintreue) statusList.push(getStatus(t.termintreue, bl.termintreue));
+        if (t.loesungsquote !== null && bl.loesungsquote) statusList.push(getStatus(t.loesungsquote, bl.loesungsquote));
         if (t.nps !== null) statusList.push(getNPSStatus(t.nps));
         if (t.a1 !== null) statusList.push(t.a1 >= 60 ? "gut" : t.a1 >= 45 ? "warnung" : "kritisch");
         if (t.a0 !== null && t.a0 > 10) statusList.push("kritisch");
