@@ -886,21 +886,44 @@ export default function KPIAgent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
-          max_tokens: 2000,
-          system: "Du bist ein Datenextraktor fuer Telekom-KPI-Reports. Extrahiere alle Techniker-Daten aus dem Bild und gib sie als CSV zurueck. Erste Zeile: Spaltenheader. Erkenne automatisch ob es SMS-Feedback, NFTQ, OneTouch oder Schalten ist. Fuer SMS-Feedback: Name,CC-Rate,Termintreue,NPS,Auftraege,Bemerkungen. Fuer NFTQ: Name,NFTQ-B,NFTQ-S,NFTQ-M,NFTQ-P,Auftraege. Fuer OneTouch: Name,A1,A2,AX,A0,A-Ges,Auftraege,Tage. Gib NUR die CSV aus, keinen Text davor oder danach.",
+          max_tokens: 3000,
+          system: `Du bist ein Datenextraktor fuer Telekom-KPI-Reports von FiberNC. Extrahiere ALLE Techniker-Daten aus dem Bild als CSV.
+
+WICHTIG: Erkenne den Report-Typ automatisch:
+
+1. SMS-Feedback / Schalten (hat Spalten: Courtesy Calls, Termintreue, NPS, Loesungsquote):
+   CSV-Format: Name,Auftraege,CC-Rate,Termintreue,NPS,Loesungsquote,Standort
+   Beispiel: Ali Sodjajy,112,100.0,100.0,67,96.0,FS5335
+
+2. NFTQ Mitarbeitersicht (hat Techniker-Namen mit Monatswerten, Titel enthaelt "NFTQ Mitarbeiter"):
+   CSV-Format: Name,Auftraege,NFTQ-B,NFTQ-S,NFTQ-M,NFTQ-P,Standort
+   Nimm den aktuellsten Monatswert (letzte Spalte vor Gesamtergebnis)
+   Beispiel: Pejman Nazem,142,1.77,0.00,1.96,0.00,FS5335
+
+3. OneTouch (hat A1, A2, AX, A0 Spalten):
+   CSV-Format: Name,Auftraege,Tage,A1,A2,AX,A0,A-Ges,Standort
+
+4. NFTQ Detailsicht (hat KPIName Spalte, KEINE Techniker-Namen):
+   Antworte: "KEIN_TECHNIKER_REPORT - Das ist eine Firmen-Gesamtansicht ohne einzelne Techniker."
+
+Gib NUR die CSV aus (inkl. Header-Zeile), keinen Text davor oder danach.
+Standort ist FS5335 wenn nicht anders erkennbar.`,
           messages: [{ role: "user", content: [
             { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
-            { type: "text", text: "Extrahiere alle Daten aus diesem Telekom-KPI-Report als CSV." }
+            { type: "text", text: "Extrahiere alle Techniker-Daten aus diesem Telekom-KPI-Screenshot als CSV. Wenn keine einzelnen Techniker erkennbar sind, schreibe KEIN_TECHNIKER_REPORT." }
           ]}]
         })
       });
       const data = await resp.json();
       const csvText = data.content?.map(b => b.text || "").join("") || "";
-      if (csvText.trim()) {
+      if (csvText.includes("KEIN_TECHNIKER_REPORT")) {
+        setError("Dieses Bild zeigt keine Techniker-Einzeldaten (z.B. Firmen-Gesamtansicht). Bitte Screenshot der Techniker-Tabelle hochladen.");
+      } else if (csvText.trim()) {
         handleRows(parseCSV(csvText));
-        setError("");
+        setError("Bild erfolgreich verarbeitet!");
+        setTimeout(() => setError(""), 3000);
       } else {
-        setError("Bild konnte nicht verarbeitet werden.");
+        setError("Bild konnte nicht verarbeitet werden. Bitte deutlicheren Screenshot versuchen.");
       }
     } catch(e) {
       setError("Fehler bei Bild-Verarbeitung: " + e.message);
