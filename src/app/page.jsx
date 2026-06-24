@@ -31,7 +31,7 @@ FS5335: CC=${bl.fs5335.cc_rate}% | Termintreue=${bl.fs5335.termintreue}% | Lösu
 FS5336: CC=${bl.fs5336.cc_rate}% | Termintreue=${bl.fs5336.termintreue}% | Lösungsquote=${bl.fs5336.loesungsquote}%
 KW20 schlechteste Woche (NPS 26, Termintreue 85,7%). KW23-24 FS5336 kritisch: CC 70%, SearchCall 37%.
 OneTouch: A1=erster Besuch erledigt (Ziel >=60%), AX=Abbruch, A0=nicht erledigt (kritisch >10%).
-Aufgabe: Techniker-KPIs bewerten, Leitstellen-Empfehlungen.
+Aufgabe: Techniker-KPIs bewerten, Leitstellen-Empfehlungen. Wenn Vorperioden-Daten vorhanden, Trend (Verbesserung/Verschlechterung) je Techniker angeben mit Pfeil (gestiegen/gesunken).
 Echte Telekom-Zielwerte (aus Maßnahmenplan):
 - CC-Rate (Service Calls): Ziel >= 96%, Warnung < 96%, Kritisch < 85%
 - Termintreue: Ziel >= 97%, Warnung < 97%, Kritisch < 85%
@@ -186,6 +186,15 @@ function getOTStatus(tech) {
   return "gut";
 }
 
+function getTrend(current, previous) {
+  if (current === null || current === undefined || previous === null || previous === undefined) return null;
+  const diff = current - previous;
+  if (Math.abs(diff) < 0.5) return { symbol: "=", color: "#6b7280", diff: 0 };
+  return diff > 0
+    ? { symbol: "+" + diff.toFixed(1), color: "#4ade80", diff }
+    : { symbol: diff.toFixed(1), color: "#f87171", diff };
+}
+
 function parseMassnahmen(text) {
   // Versuch 1: <MASSNAHMEN> Block
   try {
@@ -261,13 +270,17 @@ function StatusBadge({ status }) {
   return <span style={{ background: s.bg, color: s.color, padding: "2px 8px", borderRadius: 3, fontSize: 11, fontFamily: "monospace", fontWeight: 700 }}>{s.label}</span>;
 }
 
-function KPIBar({ value, baseline, label }) {
+function KPIBar({ value, baseline, label, trend }) {
   if (value === null || value === undefined || isNaN(value)) return null;
   const color = value / baseline < 0.85 ? "#f87171" : value / baseline < 0.93 ? "#fbbf24" : "#4ade80";
   return (
     <div style={{ marginBottom: 6 }}>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#9ca3af", marginBottom: 2 }}>
-        <span>{label}</span><span style={{ color }}>{value.toFixed(1)}% / {baseline}%</span>
+        <span>{label}</span>
+        <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {trend && <span style={{ color: trend.color, fontSize: 10, fontWeight: 700 }}>{trend.symbol}%</span>}
+          <span style={{ color }}>{value.toFixed(1)}% / {baseline}%</span>
+        </span>
       </div>
       <div style={{ background: "#1f2937", borderRadius: 2, height: 6, position: "relative" }}>
         <div style={{ width: `${Math.min(100, value)}%`, background: color, height: "100%", borderRadius: 2 }} />
@@ -312,7 +325,7 @@ function OTStackedBar({ tech }) {
   );
 }
 
-function TechCard({ tech, baselines }) {
+function TechCard({ tech, baselines, vorperiode }) {
   const isNFTQ = tech.quelle === "nftq";
   const isOT = tech.quelle === "onetouch";
   const bl = String(tech.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
@@ -364,9 +377,12 @@ function TechCard({ tech, baselines }) {
         <NFTQBar value={tech.nftq_p} label="Problembehebung" />
       </>)}
       {!isOT && !isNFTQ && (<>
-        <KPIBar value={tech.cc_rate} baseline={bl.cc_rate} label="CC-Rate" />
-        <KPIBar value={tech.termintreue} baseline={bl.termintreue} label="Termintreue" />
-        <KPIBar value={tech.loesungsquote} baseline={bl.loesungsquote} label="Lösungsquote" />
+        <KPIBar value={tech.cc_rate} baseline={bl.cc_rate} label="CC-Rate"
+          trend={vorperiode ? getTrend(tech.cc_rate, vorperiode.cc_rate) : null} />
+        <KPIBar value={tech.termintreue} baseline={bl.termintreue} label="Termintreue"
+          trend={vorperiode ? getTrend(tech.termintreue, vorperiode.termintreue) : null} />
+        <KPIBar value={tech.loesungsquote} baseline={bl.loesungsquote} label="Lösungsquote"
+          trend={vorperiode ? getTrend(tech.loesungsquote, vorperiode.loesungsquote) : null} />
         {tech.nps !== null ? (
           <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 11, color: "#9ca3af" }}>NPS:</span>
@@ -918,11 +934,23 @@ export default function KPIAgent() {
       if (t.quelle === "nftq") return `${t.name}: NFTQ-B=${t.nftq_b?.toFixed(2) ?? "-"}%, NFTQ-S=${t.nftq_s?.toFixed(2) ?? "-"}%, NFTQ-M=${t.nftq_m?.toFixed(2) ?? "-"}%, NFTQ-P=${t.nftq_p?.toFixed(2) ?? "-"}%, Aufträge=${t.auftraege}`;
       return `${t.name} (FS${t.standort}): CC=${t.cc_rate?.toFixed(1) ?? "-"}%, Termintreue=${t.termintreue?.toFixed(1) ?? "-"}%, Lösungsquote=${t.loesungsquote?.toFixed(1) ?? "-"}%, NPS=${t.nps?.toFixed(0) ?? "-"}, Aufträge=${t.auftraege}`;
     }).join("\n");
+    // Letzte archivierte KW fuer Vergleich
+    let vorperiodeStr = "";
+    if (archiv.length > 0) {
+      const letzteKW = archiv[archiv.length - 1];
+      const vorTechs = Object.values(letzteKW.daten).flat();
+      vorperiodeStr = "\n\nVorperiode (" + letzteKW.label + "):\n" + vorTechs.map(t => {
+        if (t.quelle === "onetouch") return `${t.name}: A1=${t.a1?.toFixed(1) ?? "-"}%, A-Ges=${t.a_ges?.toFixed(1) ?? "-"}%`;
+        if (t.quelle === "nftq") return `${t.name}: NFTQ-B=${t.nftq_b?.toFixed(2) ?? "-"}%, NFTQ-S=${t.nftq_s?.toFixed(2) ?? "-"}%, NFTQ-M=${t.nftq_m?.toFixed(2) ?? "-"}%, NFTQ-P=${t.nftq_p?.toFixed(2) ?? "-"}%`;
+        return `${t.name}: CC=${t.cc_rate?.toFixed(1) ?? "-"}%, TT=${t.termintreue?.toFixed(1) ?? "-"}%, NPS=${t.nps?.toFixed(0) ?? "-"}`;
+      }).join("\n");
+    }
+
     try {
       const res = await fetch("/api/analyse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, system: SYSTEM_PROMPT_FN(baselines), messages: [{ role: "user", content: `Analysiere diese Techniker-KPIs:\n\n${dataStr}` }] }),
+        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, system: SYSTEM_PROMPT_FN(baselines), messages: [{ role: "user", content: `Analysiere diese Techniker-KPIs:\n\n${dataStr}${vorperiodeStr}\n\nBitte zeige bei jedem Techniker den Trend zur Vorperiode mit Pfeil (gestiegen/gesunken/gleich) und Delta.` }] }),
       });
       const data = await res.json();
       const text = data.content?.map(b => b.text || "").join("") || "";
@@ -1263,7 +1291,11 @@ export default function KPIAgent() {
 
             {activeTab === "dashboard" && (
               <>
-                <div style={{ marginBottom: 16 }}>{angezeigt.map((t, i) => <TechCard key={i} tech={t} baselines={baselines} />)}</div>
+                <div style={{ marginBottom: 16 }}>{angezeigt.map((t, i) => {
+                  const vorTechs = archiv.length > 0 ? Object.values(archiv[archiv.length-1].daten).flat() : [];
+                  const vorperiode = vorTechs.find(v => v.name === t.name) || null;
+                  return <TechCard key={i} tech={t} baselines={baselines} vorperiode={vorperiode} />;
+                })}</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <button onClick={runAnalysis} disabled={loading}
                     style={{ width: "100%", background: loading ? "#1f2937" : "#1d4ed8", color: loading ? "#6b7280" : "#fff", border: "none", borderRadius: 8, padding: "14px", fontSize: 14, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer" }}>
