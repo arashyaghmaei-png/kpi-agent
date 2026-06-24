@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
 const USERS = [
   { username: process.env.USER1_NAME || "arash", password: process.env.USER1_PASS || "fibernc2024", role: "admin", displayName: "Arash" },
@@ -6,7 +6,7 @@ const USERS = [
   { username: process.env.USER3_NAME || "techniker", password: process.env.USER3_PASS || "tech123", role: "user", displayName: "Techniker" },
 ];
 
-export async function POST(request: NextRequest) {
+export async function POST(request) {
   try {
     const { username, password } = await request.json();
 
