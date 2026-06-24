@@ -193,7 +193,7 @@ function normalizeRows(rawRows) {
       const standort = standortKlar ? rawStandort : "5335";
       if (fmt === "smsfeedback") return { name, standort: String(get(row, "od") || "5335"), cc_rate: parsePercent(get(row, "cc")), termintreue: parsePercent(get(row, "termintreue")), loesungsquote: null, nps: parsePercent(get(row, "nps pb", "nps bs")), auftraege: get(row, "anzahl") || "-", quelle: "smsfeedback", standortUnbekannt: false };
       if (fmt === "smsfeedbackschalten") return { name, standort: "5335", cc_rate: parsePercent(get(row, "courtesy call")), termintreue: parsePercent(get(row, "termintreue mit st vo", "termintreue ohne st vo")), loesungsquote: null, nps: parsePercent(get(row, "nps")), auftraege: get(row, "anzahl") || "-", quelle: "smsfeedbackschalten", standortUnbekannt: false };
-      if (fmt === "nftq") return { name, standort: "5335", cc_rate: null, termintreue: null, loesungsquote: null, nftq_b: parsePercent(get(row, "nftq b")), nftq_s: parsePercent(get(row, "nftq s")), nftq_m: parsePercent(get(row, "nftq m")), nftq_p: parsePercent(get(row, "nftq p")), auftraege: get(row, "anzahl") || "-", quelle: "nftq", standortUnbekannt: false };
+      if (fmt === "nftq") return { name, standort: "5335", cc_rate: null, termintreue: null, loesungsquote: null, nftq_b: parsePercent(get(row, "nftq b")), nftq_s: parsePercent(get(row, "nftq s")), nftq_m: parsePercent(get(row, "nftq m")), nftq_p: parsePercent(get(row, "nftq p")), auftraege: get(row, "anzahl") || "-", menge_b: parseInt(get(row, "bereitstellung")) || null, menge_s: parseInt(get(row, "schalten")) || null, menge_m: parseInt(get(row, "montage")) || null, menge_p: parseInt(get(row, "problembehebung")) || null, quelle: "nftq", standortUnbekannt: false };
       return { name, standort, cc_rate: parsePercent(get(row, "cc_rate")), termintreue: parsePercent(get(row, "termintreue")), loesungsquote: parsePercent(get(row, "loesungsquote")), nps: parsePercent(get(row, "nps")), auftraege: get(row, "auftraege") || "-", quelle: "standard", standortUnbekannt: !standortKlar };
     });
 }
@@ -423,6 +423,14 @@ function TechCard({ tech, baselines, vorperiode }) {
       </>)}
       {isNFTQ && (<>
         <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>NFTQ Fehlerquoten</div>
+        {(tech.menge_b !== null && tech.menge_b !== undefined) && (
+          <div style={{ display: "flex", gap: 12, fontSize: 10, color: "#6b7280", marginBottom: 6, padding: "4px 0" }}>
+            <span>B: <strong style={{ color: "#9ca3af" }}>{tech.menge_b}</strong></span>
+            <span>S: <strong style={{ color: "#9ca3af" }}>{tech.menge_s ?? "-"}</strong></span>
+            <span>M: <strong style={{ color: "#9ca3af" }}>{tech.menge_m ?? "-"}</strong></span>
+            <span>P: <strong style={{ color: "#9ca3af" }}>{tech.menge_p ?? "-"}</strong></span>
+          </div>
+        )}
         <NFTQBar value={tech.nftq_b} label="Bereitstellung" />
         <NFTQBar value={tech.nftq_s} label="Schalten" />
         <NFTQBar value={tech.nftq_m} label="Montage" />
