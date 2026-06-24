@@ -1,4 +1,4 @@
--'use client';
+'use client'; // v2.0
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import * as XLSX from "xlsx";
