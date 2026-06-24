@@ -883,7 +883,7 @@ export default function KPIAgent() {
         return {
           name: t.name,
           status: worst,
-          massnahme: worst === "gut" ? lob : worst === "warnung" ? "WARNUNG v3: KPI-Werte beobachten." : "KRITISCH v3: Sofortgespraech Leitstelle.",
+          massnahme: worst === "gut" ? lob : worst === "warnung" ? "KPI-Werte beobachten und gezieltes Coaching einleiten." : "Sofortgespraech mit Leitstelle erforderlich - Verbesserungsmassnahmen festlegen.",
           betreff: worst === "gut" ? "Lob: Sehr gute KPI-Leistung" : worst === "warnung" ? "KPI Verbesserung" : "Dringend: KPI kritisch"
         };
       });
