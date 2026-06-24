@@ -849,14 +849,15 @@ export default function KPIAgent() {
           : t.a1 !== null && t.a1 >= 60
           ? "Erstlösungsquote " + (t.a1 || 0).toFixed(1) + "% — Zielwert 60% erreicht, ausgezeichnete Effizienz!"
           : "Hervorragende Leistung! Alle KPI-Werte im Zielbereich — weiter so!";
-        return {
-          name: t.name,
-          status: worst,
-          massnahme: worst === "gut" ? lobText : worst === "warnung" ? "KPI-Werte beobachten: gezieltes Coaching und Nachbesprechung einleiten." : "Sofortgespräch mit Leitstelle erforderlich — konkrete Verbesserungsmaßnahmen festlegen.",
-          betreff: worst === "gut" ? "Lob: Sehr gute KPI-Leistung" : worst === "warnung" ? "KPI Verbesserung erforderlich" : "Dringend: KPI kritisch"
+        const safeReturn = {
+          name: String(t.name || "Unbekannt"),
+          status: String(worst || "gut"),
+          massnahme: String(worst === "gut" ? lobText : worst === "warnung" ? "KPI-Werte beobachten: gezieltes Coaching einleiten." : "Sofortgesprach mit Leitstelle erforderlich."),
+          betreff: String(worst === "gut" ? "Lob: Sehr gute KPI-Leistung" : worst === "warnung" ? "KPI Verbesserung" : "Dringend: KPI kritisch")
         };
+        return safeReturn;
       });
-      setMassnahmen(alleMassnahmen);
+      setMassnahmen(alleMassnahmen.filter(m => m && m.name));
       setMassnahmenFehler(null);
 
       setActiveTab("analyse");
