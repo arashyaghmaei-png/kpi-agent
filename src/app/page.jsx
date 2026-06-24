@@ -1,4 +1,4 @@
-'use client';
+-'use client';
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import * as XLSX from "xlsx";
@@ -749,6 +749,39 @@ export default function KPIAgent() {
 
   const hatDaten = Object.keys(gespeichert).length > 0;
 
+  const berechneMassnahmen = (techs, bl_baselines) => {
+    return techs.map(t => {
+      const bl = String(t.standort) === "5336" ? bl_baselines.fs5336 : bl_baselines.fs5335;
+      const sl = [];
+      if (t.cc_rate !== null) sl.push(getStatus(t.cc_rate, bl.cc_rate));
+      if (t.termintreue !== null) sl.push(getStatus(t.termintreue, bl.termintreue));
+      if (t.loesungsquote !== null) sl.push(getStatus(t.loesungsquote, bl.loesungsquote));
+      if (t.nps !== null) sl.push(getNPSStatus(t.nps));
+      if (t.a1 !== null) sl.push(t.a1 >= 60 ? "gut" : t.a1 >= 45 ? "warnung" : "kritisch");
+      if (t.a0 !== null && t.a0 > 10) sl.push("kritisch");
+      if (t.nftq_b !== null) sl.push(t.nftq_b <= 4 ? "gut" : t.nftq_b <= 8 ? "warnung" : "kritisch");
+      if (t.nftq_s !== null) sl.push(t.nftq_s <= 4 ? "gut" : t.nftq_s <= 8 ? "warnung" : "kritisch");
+      if (t.nftq_m !== null) sl.push(t.nftq_m <= 4 ? "gut" : t.nftq_m <= 8 ? "warnung" : "kritisch");
+      if (t.nftq_p !== null) sl.push(t.nftq_p <= 4 ? "gut" : t.nftq_p <= 8 ? "warnung" : "kritisch");
+      const worst = sl.length === 0 ? "gut" : sl.includes("kritisch") ? "kritisch" : sl.includes("warnung") ? "warnung" : "gut";
+      const lob = t.nps !== null && t.nps >= 50
+        ? "Sehr gut! NPS " + Math.round(t.nps) + " weit ueber Zielwert 50."
+        : t.cc_rate !== null && t.cc_rate >= 96
+        ? "Sehr gute CC-Rate " + t.cc_rate.toFixed(1) + "% - Zielwert erreicht!"
+        : t.nftq_b !== null && worst === "gut"
+        ? "Alle NFTQ-Werte im Zielbereich - ausgezeichnete Qualitaetsarbeit!"
+        : t.a1 !== null && t.a1 >= 60
+        ? "Erstloesungsquote " + t.a1.toFixed(1) + "% - Zielwert erreicht!"
+        : "Hervorragende Leistung! Alle KPI-Werte im Zielbereich.";
+      return {
+        name: t.name,
+        status: worst,
+        massnahme: worst === "gut" ? lob : worst === "warnung" ? "KPI-Werte beobachten und gezielt verbessern." : "Sofortgesprach mit Leitstelle - Verbesserungsmassnahmen festlegen.",
+        betreff: worst === "gut" ? "Lob: Sehr gute KPI-Leistung" : "KPI Massnahme erforderlich"
+      };
+    });
+  };
+
   const berechneTechScore = useCallback((tech) => {
     const bl = String(tech.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
     const scores = [];
@@ -820,50 +853,42 @@ export default function KPIAgent() {
       const text = data.content?.map(b => b.text || "").join("") || "";
       setAiAnalysis(text);
 
-      // Massnahmen generieren - simpelste Version
-      try {
-        console.log("TECHNIKER:", angezeigt.map(t => t.name + " nftq_b=" + t.nftq_b + " nps=" + t.nps + " cc=" + t.cc_rate));
-        const alleMassnahmen = angezeigt.map(t => {
+      // Massnahmen fuer jeden Techniker berechnen
+      const alleMassnahmen = angezeigt.map(t => {
         const bl = String(t.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
         const statusList = [];
-        // Standard KPIs
         if (t.cc_rate !== null) statusList.push(getStatus(t.cc_rate, bl.cc_rate));
         if (t.termintreue !== null) statusList.push(getStatus(t.termintreue, bl.termintreue));
         if (t.loesungsquote !== null) statusList.push(getStatus(t.loesungsquote, bl.loesungsquote));
         if (t.nps !== null) statusList.push(getNPSStatus(t.nps));
-        // OneTouch KPIs
         if (t.a1 !== null) statusList.push(t.a1 >= 60 ? "gut" : t.a1 >= 45 ? "warnung" : "kritisch");
         if (t.a0 !== null && t.a0 > 10) statusList.push("kritisch");
-        // NFTQ KPIs
         if (t.nftq_b !== null) statusList.push(t.nftq_b <= 4 ? "gut" : t.nftq_b <= 8 ? "warnung" : "kritisch");
         if (t.nftq_s !== null) statusList.push(t.nftq_s <= 4 ? "gut" : t.nftq_s <= 8 ? "warnung" : "kritisch");
         if (t.nftq_m !== null) statusList.push(t.nftq_m <= 4 ? "gut" : t.nftq_m <= 8 ? "warnung" : "kritisch");
         if (t.nftq_p !== null) statusList.push(t.nftq_p <= 4 ? "gut" : t.nftq_p <= 8 ? "warnung" : "kritisch");
         const worst = statusList.length === 0 ? "gut" : statusList.includes("kritisch") ? "kritisch" : statusList.includes("warnung") ? "warnung" : "gut";
-        // Personalisierter Lob-Text
-        const nftqGut = t.quelle === "nftq" && worst === "gut";
-        const lobText = nftqGut
-          ? "Alle NFTQ-Werte im Zielbereich (<=4%) - ausgezeichnete Qualitätsarbeit, weiter so!"
+        const nps_val = t.nps !== null ? t.nps : 0;
+        const cc_val = t.cc_rate !== null ? t.cc_rate : 0;
+        const a1_val = t.a1 !== null ? t.a1 : 0;
+        const lob = t.quelle === "nftq" && worst === "gut"
+          ? "Alle NFTQ-Werte im Zielbereich (<=4%) - ausgezeichnete Qualitaetsarbeit!"
           : t.nps !== null && t.nps >= 50
-          ? "Ausgezeichnete Leistung! NPS " + (t.nps || 0).toFixed(0) + " weit über Zielwert 50 - Sie sind ein Vorbild im Team!"
+          ? "Ausgezeichnet! NPS " + nps_val.toFixed(0) + " ueber Zielwert 50 - Vorbild im Team!"
           : t.cc_rate !== null && t.cc_rate >= 96
-          ? "Sehr gute CC-Rate " + (t.cc_rate || 0).toFixed(1) + "% - Zielwert 96% erreicht, hervorragende Arbeit!"
+          ? "Sehr gute CC-Rate " + cc_val.toFixed(1) + "% - Zielwert 96% erreicht!"
           : t.a1 !== null && t.a1 >= 60
-          ? "Erstlösungsquote " + (t.a1 || 0).toFixed(1) + "% - Zielwert 60% erreicht, ausgezeichnete Effizienz!"
+          ? "Erstloesungsquote " + a1_val.toFixed(1) + "% - Zielwert 60% erreicht!"
           : "Hervorragende Leistung! Alle KPI-Werte im Zielbereich - weiter so!";
-        const safeReturn = {
-          name: String(t.name || "Unbekannt"),
-          status: String(worst || "gut"),
-          massnahme: String(worst === "gut" ? lobText : worst === "warnung" ? "KPI-Werte beobachten: gezieltes Coaching einleiten." : "Sofortgesprach mit Leitstelle erforderlich."),
-          betreff: String(worst === "gut" ? "Lob: Sehr gute KPI-Leistung" : worst === "warnung" ? "KPI Verbesserung" : "Dringend: KPI kritisch")
+        return {
+          name: t.name,
+          status: worst,
+          massnahme: worst === "gut" ? lob : worst === "warnung" ? "KPI-Werte beobachten und gezieltes Coaching einleiten." : "Sofortgespraech mit Leitstelle - Verbesserungsmassnahmen festlegen.",
+          betreff: worst === "gut" ? "Lob: Sehr gute KPI-Leistung" : worst === "warnung" ? "KPI Verbesserung" : "Dringend: KPI kritisch"
         };
-        return safeReturn;
-        });
-        setMassnahmen(alleMassnahmen);
-        setMassnahmenFehler(null);
-      } catch(massErr) {
-        setMassnahmenFehler("Fehler: " + massErr.message);
-      }
+      });
+      setMassnahmen(alleMassnahmen);
+      setMassnahmenFehler(null);
 
       setActiveTab("analyse");
     } catch (e) { setError("Fehler bei der KI-Analyse."); }
@@ -1169,7 +1194,7 @@ export default function KPIAgent() {
                   <>
                     <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8, padding: "20px", fontSize: 13, lineHeight: 1.8, color: "#d1d5db" }}
                       dangerouslySetInnerHTML={{ __html: renderMarkdown(aiAnalysis) }} />
-                    <MassnahmenPanel massnahmen={massnahmen} parseError={massnahmenFehler} kontakte={kontakte} />
+                    <MassnahmenPanel massnahmen={berechneMassnahmen(angezeigt, baselines)} parseError={null} kontakte={kontakte} />
                   </>
                 )}
               </div>
