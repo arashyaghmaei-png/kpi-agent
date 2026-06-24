@@ -822,6 +822,7 @@ export default function KPIAgent() {
 
       // Massnahmen generieren - simpelste Version
       try {
+        console.log("TECHNIKER:", angezeigt.map(t => t.name + " nftq_b=" + t.nftq_b + " nps=" + t.nps + " cc=" + t.cc_rate));
         const alleMassnahmen = angezeigt.map(t => {
         const bl = String(t.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
         const statusList = [];
