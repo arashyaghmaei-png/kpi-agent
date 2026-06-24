@@ -854,6 +854,8 @@ export default function KPIAgent() {
       setAiAnalysis(text);
 
       // Massnahmen fuer jeden Techniker berechnen
+      const saeedDebug = angezeigt.find(t => t.name.includes("Saeed") || t.name.includes("Havend"));
+      if (saeedDebug) alert("Saeed: nftq_b=" + saeedDebug.nftq_b + " nftq_s=" + saeedDebug.nftq_s + " nps=" + saeedDebug.nps + " cc=" + saeedDebug.cc_rate + " quelle=" + saeedDebug.quelle);
       const alleMassnahmen = angezeigt.map(t => {
         const bl = String(t.standort) === "5336" ? (baselines.fs5336 || DEFAULT_BASELINES.fs5336) : (baselines.fs5335 || DEFAULT_BASELINES.fs5335);
         const statusList = [];
