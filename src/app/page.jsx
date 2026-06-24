@@ -899,6 +899,12 @@ export default function KPIAgent() {
   const archivieren = useCallback(() => {
     if (!hatDaten) return;
     const now = new Date();
+    const { kw, jahr } = getKW(now);
+    const kwInput = window.prompt(
+      "Kalenderwoche eingeben (Format: KW25 2026 oder KW25/26 2026):",
+      `KW${String(kw).padStart(2, "0")} ${jahr}`
+    );
+    if (kwInput === null) return; // Abgebrochen
     const datatenMitStatus = {};
     Object.entries(gespeichert).forEach(([kat, techs]) => {
       datatenMitStatus[kat] = techs.map(t => {
@@ -919,8 +925,10 @@ export default function KPIAgent() {
         return { ...t, _status: status, _score: berechneTechScore(t) };
       });
     });
+    const datum = now.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const archivLabel = kwInput.trim() ? `${kwInput.trim()} · ${datum}` : formatArchivLabel(now);
     setArchiv(prev => [...prev, {
-      label: formatArchivLabel(now), datum: now.toISOString(),
+      label: archivLabel, datum: now.toISOString(),
       daten: datatenMitStatus, analyse: aiAnalysis || "", bewertungen: techBewertungen,
     }]);
     setGespeichert({}); setAktiveKategorie("alle");
@@ -1015,12 +1023,16 @@ export default function KPIAgent() {
                 )}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-                {tech.cc_rate !== null && <span style={{ fontSize: 10, background: "#1f2937", color: "#9ca3af", padding: "2px 8px", borderRadius: 3 }}>CC {tech.cc_rate.toFixed(1)}%</span>}
-                {tech.termintreue !== null && <span style={{ fontSize: 10, background: "#1f2937", color: "#9ca3af", padding: "2px 8px", borderRadius: 3 }}>TT {tech.termintreue.toFixed(1)}%</span>}
-                {tech.loesungsquote !== null && <span style={{ fontSize: 10, background: "#1f2937", color: "#9ca3af", padding: "2px 8px", borderRadius: 3 }}>LQ {tech.loesungsquote.toFixed(1)}%</span>}
-                {tech.nps !== null && <span style={{ fontSize: 10, background: "#1f2937", color: "#9ca3af", padding: "2px 8px", borderRadius: 3 }}>NPS {tech.nps.toFixed(0)}</span>}
-                {tech.a1 !== null && <span style={{ fontSize: 10, background: "#1f2937", color: "#9ca3af", padding: "2px 8px", borderRadius: 3 }}>A1 {tech.a1.toFixed(1)}%</span>}
-                {tech.a0 !== null && tech.a0 > 0 && <span style={{ fontSize: 10, background: "#2e0f0f", color: "#f87171", padding: "2px 8px", borderRadius: 3 }}>A0 {tech.a0.toFixed(1)}%</span>}
+                {tech.cc_rate !== null && tech.cc_rate !== undefined && (() => { const s = getStatus(tech.cc_rate, (String(tech.standort)==="5336"?baselines.fs5336:baselines.fs5335).cc_rate); const c = s==="kritisch"?"#f87171":s==="warnung"?"#fbbf24":"#4ade80"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>CC {tech.cc_rate.toFixed(1)}%</span>; })()}
+                {tech.termintreue !== null && tech.termintreue !== undefined && (() => { const s = getStatus(tech.termintreue, (String(tech.standort)==="5336"?baselines.fs5336:baselines.fs5335).termintreue); const c = s==="kritisch"?"#f87171":s==="warnung"?"#fbbf24":"#4ade80"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>TT {tech.termintreue.toFixed(1)}%</span>; })()}
+                {tech.loesungsquote !== null && tech.loesungsquote !== undefined && (() => { const s = getStatus(tech.loesungsquote, (String(tech.standort)==="5336"?baselines.fs5336:baselines.fs5335).loesungsquote); const c = s==="kritisch"?"#f87171":s==="warnung"?"#fbbf24":"#4ade80"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>LQ {tech.loesungsquote.toFixed(1)}%</span>; })()}
+                {tech.nps !== null && tech.nps !== undefined && (() => { const s = getNPSStatus(tech.nps); const c = s==="kritisch"?"#f87171":s==="warnung"?"#fbbf24":"#4ade80"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>NPS {tech.nps.toFixed(0)}</span>; })()}
+                {tech.a1 !== null && tech.a1 !== undefined && (() => { const c = tech.a1>=60?"#4ade80":tech.a1>=45?"#fbbf24":"#f87171"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>A1 {tech.a1.toFixed(1)}%</span>; })()}
+                {tech.nftq_b !== null && tech.nftq_b !== undefined && (() => { const c = tech.nftq_b<=4?"#4ade80":tech.nftq_b<=8?"#fbbf24":"#f87171"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>NFTQ-B {tech.nftq_b.toFixed(1)}%</span>; })()}
+                {tech.nftq_s !== null && tech.nftq_s !== undefined && (() => { const c = tech.nftq_s<=4?"#4ade80":tech.nftq_s<=8?"#fbbf24":"#f87171"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>NFTQ-S {tech.nftq_s.toFixed(1)}%</span>; })()}
+                {tech.nftq_m !== null && tech.nftq_m !== undefined && (() => { const c = tech.nftq_m<=4?"#4ade80":tech.nftq_m<=8?"#fbbf24":"#f87171"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>NFTQ-M {tech.nftq_m.toFixed(1)}%</span>; })()}
+                {tech.nftq_p !== null && tech.nftq_p !== undefined && (() => { const c = tech.nftq_p<=4?"#4ade80":tech.nftq_p<=8?"#fbbf24":"#f87171"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>NFTQ-P {tech.nftq_p.toFixed(1)}%</span>; })()}
+                {tech.a0 !== null && tech.a0 !== undefined && tech.a0 > 0 && <span style={{ fontSize: 10, background: "#2e0f0f", color: "#f87171", padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>A0 {tech.a0.toFixed(1)}%</span>}
               </div>
               {isLoadingThis && <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>... KI bewertet...</div>}
               {bew && !isLoadingThis && (
