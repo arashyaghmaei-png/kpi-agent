@@ -119,11 +119,23 @@ function aggregateOneTouch(rawRows) {
   });
 }
 
+function autoDetectType(headers) {
+  const h = headers.map(x => String(x || "").toLowerCase());
+  if (h.some(x => x.includes("nftq") || x.includes("fehlerquote"))) return "nftq";
+  if (h.some(x => x.includes("a1") || x.includes("onetouch") || x.includes("erstlosung"))) return "onetouch";
+  if (h.some(x => x.includes("schalten") || x.includes("schalt"))) return "smsfeedbackschalten";
+  if (h.some(x => x.includes("nps") || x.includes("feedback") || x.includes("sms"))) return "smsfeedback";
+  if (h.some(x => x.includes("bemerkung") || x.includes("sterne") || x.includes("anliegen"))) return "smsfeedback";
+  return null;
+}
+
 function normalizeRows(rawRows) {
   if (!rawRows || !rawRows.length) return [];
   const filtered = rawRows.filter(row => !isJunkRow(row));
   if (!filtered.length) return [];
   const rawHeaders = Object.keys(filtered[0]);
+  // Auto-detect type from headers if not already set
+  const autoKat = autoDetectType(rawHeaders);
   const headers = rawHeaders.map(cleanHeader);
   const fmt = detectFormat(headers);
   if (fmt === "onetouch") return aggregateOneTouch(filtered);
@@ -818,17 +830,57 @@ export default function KPIAgent() {
     } catch (e) { setError("Fehler: " + e.message); }
   }, [handleRows]);
 
+  const handleImageOCR = useCallback(async (file) => {
+    setLoading(true);
+    setError("");
+    try {
+      const base64 = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result.split(",")[1]);
+        r.onerror = rej;
+        r.readAsDataURL(file);
+      });
+      const mediaType = file.type || "image/jpeg";
+      const resp = await fetch("/api/analyse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 2000,
+          system: "Du bist ein Datenextraktor fuer Telekom-KPI-Reports. Extrahiere alle Techniker-Daten aus dem Bild und gib sie als CSV zurueck. Erste Zeile: Spaltenheader. Erkenne automatisch ob es SMS-Feedback, NFTQ, OneTouch oder Schalten ist. Fuer SMS-Feedback: Name,CC-Rate,Termintreue,NPS,Auftraege,Bemerkungen. Fuer NFTQ: Name,NFTQ-B,NFTQ-S,NFTQ-M,NFTQ-P,Auftraege. Fuer OneTouch: Name,A1,A2,AX,A0,A-Ges,Auftraege,Tage. Gib NUR die CSV aus, keinen Text davor oder danach.",
+          messages: [{ role: "user", content: [
+            { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
+            { type: "text", text: "Extrahiere alle Daten aus diesem Telekom-KPI-Report als CSV." }
+          ]}]
+        })
+      });
+      const data = await resp.json();
+      const csvText = data.content?.map(b => b.text || "").join("") || "";
+      if (csvText.trim()) {
+        handleRows(parseCSV(csvText));
+        setError("");
+      } else {
+        setError("Bild konnte nicht verarbeitet werden.");
+      }
+    } catch(e) {
+      setError("Fehler bei Bild-Verarbeitung: " + e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [handleRows]);
+
   const handleFile = useCallback((e) => {
     const file = e.target.files[0];
     if (!file) return;
     e.target.value = "";
     if (file.name.match(/\.xlsx?$/i)) { processXLSX(file); }
+    else if (file.name.match(/\.(png|jpg|jpeg|gif|webp)$/i)) { handleImageOCR(file); }
     else {
       const reader = new FileReader();
       reader.onload = (ev) => handleRows(parseCSV(ev.target.result));
       reader.readAsText(file, "utf-8");
     }
-  }, [processXLSX, handleRows]);
+  }, [processXLSX, handleRows, handleImageOCR]);
 
   const angezeigt = (aktiveKategorie === "alle"
     ? Object.values(gespeichert).flat().filter((t, idx, arr) => arr.findLastIndex(x => x.name === t.name) === idx)
@@ -1220,7 +1272,7 @@ export default function KPIAgent() {
           </div>
           <label style={{ background: loading ? "#1a2e1a" : "#1f2937", color: loading ? "#4ade80" : "#9ca3af", border: `1px solid ${loading ? "#14532d" : "#374151"}`, padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>
             {loading ? "... Nächste" : " Upload"}
-            <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} style={{ display: "none" }} />
+            <input type="file" accept=".csv,.xlsx,.xls,.png,.jpg,.jpeg,.pdf" onChange={handleFile} style={{ display: "none" }} />
           </label>
           {angezeigt.length > 0 && <button onClick={exportPDF} disabled={exporting} style={{ background: "#1f2937", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}> PDF</button>}
           {aktiveKategorie !== "alle" && gespeichert[aktiveKategorie] && <button onClick={() => loescheKategorie(aktiveKategorie)} style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 700 }}> {KATEGORIEN.find(k => k.id === aktiveKategorie)?.label} löschen</button>}
