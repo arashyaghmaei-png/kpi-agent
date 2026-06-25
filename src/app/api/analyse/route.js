@@ -1,46 +1,49 @@
 import { NextResponse } from "next/server";
 
-const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL;
-const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
-
-async function redisGet(key) {
-  if (!UPSTASH_URL || !UPSTASH_TOKEN) return null;
-  try {
-    const res = await fetch(`${UPSTASH_URL}/get/${key}`, {
-      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` }
-    });
-    const data = await res.json();
-    if (!data.result) return null;
-    return JSON.parse(data.result);
-  } catch { return null; }
-}
-
-async function redisSet(key, value) {
-  if (!UPSTASH_URL || !UPSTASH_TOKEN) return false;
-  try {
-    await fetch(`${UPSTASH_URL}/set/${key}`, {
-      method: "POST",
-      headers: { 
-        Authorization: `Bearer ${UPSTASH_TOKEN}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(JSON.stringify(value))
-    });
-    return true;
-  } catch { return false; }
-}
-
-export async function GET(request) {
-  const user = request.cookies.get("auth_user")?.value || "default";
-  const key = `kpi_data_${user.toLowerCase().replace(/\s+/g, "_")}`;
-  const data = await redisGet(key);
-  return NextResponse.json({ success: true, data: data || {} });
-}
+const USERS = [
+  { username: process.env.USER1_NAME || "arash", password: process.env.USER1_PASS || "fibernc2024", role: "admin", displayName: "Arash" },
+  { username: process.env.USER2_NAME || "leitstelle", password: process.env.USER2_PASS || "leitstelle123", role: "user", displayName: "Leitstelle" },
+  { username: process.env.USER3_NAME || "techniker", password: process.env.USER3_PASS || "tech123", role: "user", displayName: "Techniker" },
+];
 
 export async function POST(request) {
-  const user = request.cookies.get("auth_user")?.value || "default";
-  const key = `kpi_data_${user.toLowerCase().replace(/\s+/g, "_")}`;
-  const body = await request.json();
-  const saved = await redisSet(key, body);
-  return NextResponse.json({ success: saved });
+  try {
+    const { username, password } = await request.json();
+
+    const user = USERS.find(
+      (u) => u.username.toLowerCase() === username.toLowerCase() && u.password === password
+    );
+
+    if (!user) {
+      return NextResponse.json({ error: "Benutzername oder Passwort falsch." }, { status: 401 });
+    }
+
+    const token = Buffer.from(`${user.username}:${Date.now()}:${process.env.AUTH_SECRET || "fibernc_secret"}`).toString("base64");
+
+    const response = NextResponse.json({ 
+      success: true, 
+      displayName: user.displayName,
+      role: user.role
+    });
+
+    response.cookies.set("auth_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 7,
+      path: "/",
+    });
+
+    response.cookies.set("auth_user", user.displayName, {
+      httpOnly: false,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 7,
+      path: "/",
+    });
+
+    return response;
+  } catch {
+    return NextResponse.json({ error: "Server-Fehler." }, { status: 500 });
+  }
 }
