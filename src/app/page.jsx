@@ -1,5 +1,4 @@
-'use client';
-export const dynamic = 'force-dynamic';
+'use client'; // v2.0
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import * as XLSX from "xlsx";
@@ -1427,37 +1426,8 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
     );
   };
 
-  return (
-    <div style={{ background: "#0a0e1a", minHeight: "100vh", fontFamily: "system-ui, sans-serif", color: "#e5e7eb" }}>
-      {showKontakte && <KontakteEditor kontakte={kontakte} onSave={setKontakte} onClose={() => setShowKontakte(false)} />}
-      {showBaseline && <BaselineEditor baselines={baselines} onSave={setBaselines} onClose={() => setShowBaseline(false)} />}
-      {showTechVerwaltung && <TechnikerVerwaltung gespeichert={gespeichert} onUpdate={setGespeichert} onClose={() => setShowTechVerwaltung(false)} />}
-      {showPeriodDialog && <PeriodDialog
-        onConfirm={(period) => {
-          setUploadPeriod(period);
-          setShowPeriodDialog(false);
-          if (pendingFile) { processFile(pendingFile); setPendingFile(null); }
-        }}
-        onCancel={() => { setShowPeriodDialog(false); setPendingFile(null); }}
-      />}
-      {showVerlauf && <VerlaufPanel techName={showVerlauf} archiv={archiv} onClose={() => setShowVerlauf(null)} />}
-      {showArchiv && <ArchivPanel archiv={archiv} onDelete={(idx) => setArchiv(prev => prev.filter((_, i) => i !== idx))} onClose={() => setShowArchiv(false)} />}
 
-      <div style={{ borderBottom: "1px solid #1f2937", padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#4ade80", boxShadow: "0 0 6px #4ade80", flexShrink: 0 }} />
-          <button onClick={() => window.location.reload()} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
-            <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: 2, color: "#9ca3af", textTransform: "uppercase" }}>KPI Agent </span>
-          </button>
-          <span style={{ color: "#374151" }}>.</span>
-          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-            {KATEGORIEN.map(k => {
-              const anzahl = k.id === "alle"
-                ? Object.values(gespeichert).flat().filter((t, idx, arr) => arr.findLastIndex(x => x.name === t.name) === idx).length
-                : (gespeichert[k.id] || []).length;
-              const aktiv = aktiveKategorie === k.id;
-              const hatDatenInKat = k.id === "alle" ? hatDaten : anzahl > 0;
-              const USERS = [
+  const USERS = [
     { name: "arash", pass: "fibernc2024", display: "Arash (Admin)" },
     { name: "leitstelle", pass: "leitstelle123", display: "Leitstelle" },
     { name: "mitarbeiter", pass: "kpi2026", display: "Mitarbeiter" },
@@ -1495,6 +1465,36 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
     </div>
   );
 
+  return (
+    <div style={{ background: "#0a0e1a", minHeight: "100vh", fontFamily: "system-ui, sans-serif", color: "#e5e7eb" }}>
+      {showKontakte && <KontakteEditor kontakte={kontakte} onSave={setKontakte} onClose={() => setShowKontakte(false)} />}
+      {showBaseline && <BaselineEditor baselines={baselines} onSave={setBaselines} onClose={() => setShowBaseline(false)} />}
+      {showTechVerwaltung && <TechnikerVerwaltung gespeichert={gespeichert} onUpdate={setGespeichert} onClose={() => setShowTechVerwaltung(false)} />}
+      {showPeriodDialog && <PeriodDialog
+        onConfirm={(period) => {
+          setUploadPeriod(period);
+          setShowPeriodDialog(false);
+          if (pendingFile) { processFile(pendingFile); setPendingFile(null); }
+        }}
+        onCancel={() => { setShowPeriodDialog(false); setPendingFile(null); }}
+      />}
+      {showVerlauf && <VerlaufPanel techName={showVerlauf} archiv={archiv} onClose={() => setShowVerlauf(null)} />}
+      {showArchiv && <ArchivPanel archiv={archiv} onDelete={(idx) => setArchiv(prev => prev.filter((_, i) => i !== idx))} onClose={() => setShowArchiv(false)} />}
+
+      <div style={{ borderBottom: "1px solid #1f2937", padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#4ade80", boxShadow: "0 0 6px #4ade80", flexShrink: 0 }} />
+          <button onClick={() => window.location.reload()} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+            <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: 2, color: "#9ca3af", textTransform: "uppercase" }}>KPI Agent </span>
+          </button>
+          <span style={{ color: "#374151" }}>.</span>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            {KATEGORIEN.map(k => {
+              const anzahl = k.id === "alle"
+                ? Object.values(gespeichert).flat().filter((t, idx, arr) => arr.findLastIndex(x => x.name === t.name) === idx).length
+                : (gespeichert[k.id] || []).length;
+              const aktiv = aktiveKategorie === k.id;
+              const hatDatenInKat = k.id === "alle" ? hatDaten : anzahl > 0;
   return (
                 <button key={k.id} onClick={() => setAktiveKategorie(k.id)} style={{
                   background: aktiv ? "#1d4ed8" : hatDatenInKat ? "#111827" : "transparent",
