@@ -1468,7 +1468,33 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
       {showVerlauf && <VerlaufPanel techName={showVerlauf} archiv={archiv} onClose={() => setShowVerlauf(null)} />}
       {showArchiv && <ArchivPanel archiv={archiv} onDelete={(idx) => setArchiv(prev => prev.filter((_, i) => i !== idx))} onClose={() => setShowArchiv(false)} />}
 
-      <div style={{ borderBottom: "1px solid #1f2937", padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+      {/* KPI Warnungsleiste */}
+      {(() => {
+        const alleTechs = Object.values(gespeichert).flat().filter((t, idx, arr) => arr.findLastIndex(x => x.name === t.name) === idx);
+        const kritisch = alleTechs.filter(t => {
+          const s = t.smsStatus || t.nftqStatus || t.otStatus;
+          return s === "kritisch" || t.overallStatus === "kritisch";
+        });
+        const warnung = alleTechs.filter(t => {
+          const s = t.smsStatus || t.nftqStatus || t.otStatus;
+          return (s === "warnung" || t.overallStatus === "warnung") && s !== "kritisch" && t.overallStatus !== "kritisch";
+        });
+        if (kritisch.length === 0 && warnung.length === 0) return null;
+        return (
+          <div style={{ background: kritisch.length > 0 ? "#2e0f0f" : "#2e1f00", borderBottom: `1px solid ${kritisch.length > 0 ? "#7f1d1d" : "#92400e"}`, padding: "8px 24px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: kritisch.length > 0 ? "#f87171" : "#fbbf24", textTransform: "uppercase", letterSpacing: 1 }}>
+              {kritisch.length > 0 ? `⚠ ${kritisch.length} KRITISCH` : `⚡ ${warnung.length} WARNUNG`}
+            </span>
+            {kritisch.map(t => (
+              <span key={t.name} style={{ background: "#450a0a", border: "1px solid #7f1d1d", borderRadius: 4, padding: "2px 8px", fontSize: 11, color: "#f87171" }}>{t.name}</span>
+            ))}
+            {warnung.map(t => (
+              <span key={t.name} style={{ background: "#431407", border: "1px solid #92400e", borderRadius: 4, padding: "2px 8px", fontSize: 11, color: "#fbbf24" }}>{t.name}</span>
+            ))}
+          </div>
+        );
+      })()}
+            <div style={{ borderBottom: "1px solid #1f2937", padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#4ade80", boxShadow: "0 0 6px #4ade80", flexShrink: 0 }} />
           <button onClick={() => window.location.reload()} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
