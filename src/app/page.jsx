@@ -911,6 +911,11 @@ export default function KPIAgent() {
   const [showBaseline, setShowBaseline] = useState(false);
   const [showTechVerwaltung, setShowTechVerwaltung] = useState(false);
   const [showArchiv, setShowArchiv] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [loginUser, setLoginUser] = useState("");
+  const [loginPass, setLoginPass] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [currentUser, setCurrentUser] = useState("");
   const [minAuftraege, setMinAuftraege] = useState(1);
   const [showVerlauf, setShowVerlauf] = useState(null);
   const [uploadPeriod, setUploadPeriod] = useState(null); // { von, bis, kw, label }
@@ -919,53 +924,22 @@ export default function KPIAgent() {
   const dashboardRef = useRef(null);
 
   useEffect(() => {
-    // Load from cloud first, fallback to localStorage
-    const loadData = async () => {
-      try {
-        const res = await fetch("/api/data");
-        if (res.ok) {
-          const { data } = await res.json();
-          if (data.gespeichert) setGespeichert(data.gespeichert);
-          if (data.kontakte) setKontakte(data.kontakte);
-          if (data.baselines) setBaselines(data.baselines);
-          if (data.archiv) setArchiv(data.archiv);
-          return;
-        }
-      } catch(e) {}
-      // Fallback to localStorage
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) setGespeichert(JSON.parse(saved));
-        const savedK = localStorage.getItem(KONTAKTE_KEY);
-        if (savedK) setKontakte(JSON.parse(savedK));
-        const savedB = localStorage.getItem(BASELINE_KEY);
-        if (savedB) setBaselines(JSON.parse(savedB));
-        const savedA = localStorage.getItem(ARCHIV_KEY);
-        if (savedA) setArchiv(JSON.parse(savedA));
-      } catch(e) {}
-    };
-    loadData();
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) setGespeichert(JSON.parse(saved));
+      const savedK = localStorage.getItem(KONTAKTE_KEY);
+      if (savedK) setKontakte(JSON.parse(savedK));
+      const savedB = localStorage.getItem(BASELINE_KEY);
+      if (savedB) setBaselines(JSON.parse(savedB));
+      const savedA = localStorage.getItem(ARCHIV_KEY);
+      if (savedA) setArchiv(JSON.parse(savedA));
+    } catch(e) {}
   }, []);
 
-  // Save to localStorage (immediate)
   useEffect(() => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(gespeichert)); } catch(e) {} }, [gespeichert]);
   useEffect(() => { try { localStorage.setItem(KONTAKTE_KEY, JSON.stringify(kontakte)); } catch(e) {} }, [kontakte]);
   useEffect(() => { try { localStorage.setItem(BASELINE_KEY, JSON.stringify(baselines)); } catch(e) {} }, [baselines]);
   useEffect(() => { try { localStorage.setItem(ARCHIV_KEY, JSON.stringify(archiv)); } catch(e) {} }, [archiv]);
-  
-  // Save to cloud (debounced)
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      try {
-        await fetch("/api/data", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ gespeichert, kontakte, baselines, archiv })
-        });
-      } catch(e) {}
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, [gespeichert, kontakte, baselines, archiv]);
 
   useEffect(() => {
     if (!loading && pending) {
@@ -1471,14 +1445,8 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
       {/* KPI Warnungsleiste */}
       {(() => {
         const alleTechs = Object.values(gespeichert).flat().filter((t, idx, arr) => arr.findLastIndex(x => x.name === t.name) === idx);
-        const kritisch = alleTechs.filter(t => {
-          const s = t.smsStatus || t.nftqStatus || t.otStatus;
-          return s === "kritisch" || t.overallStatus === "kritisch";
-        });
-        const warnung = alleTechs.filter(t => {
-          const s = t.smsStatus || t.nftqStatus || t.otStatus;
-          return (s === "warnung" || t.overallStatus === "warnung") && s !== "kritisch" && t.overallStatus !== "kritisch";
-        });
+        const kritisch = alleTechs.filter(t => t.overallStatus === "kritisch");
+        const warnung = alleTechs.filter(t => t.overallStatus === "warnung");
         if (kritisch.length === 0 && warnung.length === 0) return null;
         return (
           <div style={{ background: kritisch.length > 0 ? "#2e0f0f" : "#2e1f00", borderBottom: `1px solid ${kritisch.length > 0 ? "#7f1d1d" : "#92400e"}`, padding: "8px 24px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -1508,6 +1476,44 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
                 : (gespeichert[k.id] || []).length;
               const aktiv = aktiveKategorie === k.id;
               const hatDatenInKat = k.id === "alle" ? hatDaten : anzahl > 0;
+              const USERS = [
+    { name: "arash", pass: "fibernc2024", display: "Arash (Admin)" },
+    { name: "leitstelle", pass: "leitstelle123", display: "Leitstelle" },
+    { name: "mitarbeiter", pass: "kpi2026", display: "Mitarbeiter" },
+  ];
+
+  const handleLogin = () => {
+    const user = USERS.find(u => u.name.toLowerCase() === loginUser.toLowerCase() && u.pass === loginPass);
+    if (user) { setIsLoggedIn(true); setCurrentUser(user.display); setLoginError(""); }
+    else setLoginError("Benutzername oder Passwort falsch.");
+  };
+
+  const handleLogout = () => { setIsLoggedIn(false); setCurrentUser(""); setLoginUser(""); setLoginPass(""); };
+
+  if (!isLoggedIn) return (
+    <div style={{ minHeight: "100vh", background: "#0a0f1a", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 16, padding: "40px 36px", width: 360 }}>
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "#f9fafb" }}>KPI AGENT</div>
+          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>FiberNC - Leitstelle</div>
+        </div>
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 5 }}>Benutzername</div>
+          <input value={loginUser} onChange={e => setLoginUser(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()}
+            placeholder="z.B. arash" style={{ width: "100%", background: "#0f172a", border: "1px solid #374151", borderRadius: 8, color: "#e5e7eb", padding: "10px 12px", fontSize: 14, boxSizing: "border-box", outline: "none" }} />
+        </div>
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 5 }}>Passwort</div>
+          <input type="password" value={loginPass} onChange={e => setLoginPass(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()}
+            placeholder="Passwort" style={{ width: "100%", background: "#0f172a", border: "1px solid #374151", borderRadius: 8, color: "#e5e7eb", padding: "10px 12px", fontSize: 14, boxSizing: "border-box", outline: "none" }} />
+        </div>
+        {loginError && <div style={{ background: "#2e0f0f", border: "1px solid #7f1d1d", borderRadius: 8, padding: "10px", fontSize: 13, color: "#f87171", marginBottom: 14 }}>{loginError}</div>}
+        <button onClick={handleLogin} style={{ width: "100%", background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, padding: 12, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Anmelden</button>
+        <div style={{ fontSize: 11, color: "#4b5563", textAlign: "center", marginTop: 16 }}>Passwort vergessen? Bitte Administrator kontaktieren.</div>
+      </div>
+    </div>
+  );
+
   return (
                 <button key={k.id} onClick={() => setAktiveKategorie(k.id)} style={{
                   background: aktiv ? "#1d4ed8" : hatDatenInKat ? "#111827" : "transparent",
@@ -1540,7 +1546,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
           </label>
           {angezeigt.length > 0 && <button onClick={exportPDF} disabled={exporting} style={{ background: "#1f2937", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}> PDF</button>}
           {aktiveKategorie !== "alle" && gespeichert[aktiveKategorie] && <button onClick={() => loescheKategorie(aktiveKategorie)} style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 700 }}> {KATEGORIEN.find(k => k.id === aktiveKategorie)?.label} löschen</button>}
-          <button onClick={async () => { await fetch("/api/logout", { method: "POST" }); window.location.href = "/login"; }} style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>Logout</button>
+          <button onClick={handleLogout} style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>Logout</button>
         </div>
       </div>
 
