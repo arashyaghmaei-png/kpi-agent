@@ -5,10 +5,24 @@ export function middleware(request) {
   const isLoginPage = request.nextUrl.pathname === "/login";
   const isApiLogin = request.nextUrl.pathname === "/api/login";
   const isApiLogout = request.nextUrl.pathname === "/api/logout";
+  const isApiData = request.nextUrl.pathname === "/api/data";
+  const isApiAnalyse = request.nextUrl.pathname.startsWith("/api/analyse");
 
-  if (isApiLogin || isApiLogout) return NextResponse.next();
-  if (!token && !isLoginPage) return NextResponse.redirect(new URL("/login", request.url));
-  if (token && isLoginPage) return NextResponse.redirect(new URL("/", request.url));
+  // API routes always pass through
+  if (isApiLogin || isApiLogout || isApiData || isApiAnalyse) {
+    return NextResponse.next();
+  }
+
+  // No token → redirect to login
+  if (!token && !isLoginPage) {
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
+
+  // Has token → redirect away from login
+  if (token && isLoginPage) {
+    return NextResponse.redirect(new URL("/", request.url));
+  }
+
   return NextResponse.next();
 }
 
