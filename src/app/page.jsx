@@ -473,6 +473,11 @@ function TechCard({ tech, baselines, vorperiode }) {
           trend={vorperiode ? getTrend(tech.cc_rate, vorperiode.cc_rate) : null} />
         <KPIBar value={tech.termintreue} baseline={bl.termintreue} label="Termintreue"
           trend={vorperiode ? getTrend(tech.termintreue, vorperiode.termintreue) : null} />
+        {tech.termintreue !== null && (() => { const pts = getTermintreeuPunkte(tech.termintreue); return (
+          <div style={{ fontSize: 10, color: pts >= 164 ? "#4ade80" : pts >= 0 ? "#fbbf24" : "#f87171", marginTop: -6, marginBottom: 4, paddingLeft: 2 }}>
+            Auftragsinfo Punkte: <b>{pts > 0 ? "+" : ""}{pts}</b>
+          </div>
+        ); })()}
         <KPIBar value={tech.loesungsquote} baseline={bl.loesungsquote} label="Lösungsquote"
           trend={vorperiode ? getTrend(tech.loesungsquote, vorperiode.loesungsquote) : null} />
         {tech.nps !== null ? (
@@ -890,6 +895,22 @@ function ArchivPanel({ archiv, onDelete, onClose }) {
     </div>
   );
 }
+
+
+const getTermintreeuPunkte = (prozent) => {
+  if (prozent === null || prozent === undefined) return null;
+  if (prozent < 80) return -200;
+  if (prozent < 90) return -100;
+  if (prozent < 93) return 0;
+  if (prozent < 94) return 84;
+  if (prozent < 95) return 105;
+  if (prozent < 96) return 131;
+  if (prozent < 97) return 164;
+  if (prozent < 98) return 205;
+  if (prozent < 99) return 256;
+  if (prozent < 100) return 320;
+  return 400;
+};
 
 export default function KPIAgent() {
   const [gespeichert, setGespeichert] = useState({});
