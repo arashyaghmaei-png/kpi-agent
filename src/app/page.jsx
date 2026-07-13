@@ -174,11 +174,10 @@ function normalizeRows(rawRows) {
   const filtered = rawRows.filter(row => !isJunkRow(row));
   if (!filtered.length) return [];
   const rawHeaders = Object.keys(filtered[0]);
-  // Auto-detect type from headers if not already set
-  const autoKat = autoDetectType(rawHeaders);
   const headers = rawHeaders.map(cleanHeader);
   const fmt = detectFormat(headers);
   if (fmt === "onetouch") return aggregateOneTouch(filtered);
+
   const get = (row, ...keys) => {
     for (const key of keys) {
       const raw = rawHeaders.find(h => cleanHeader(h).toLowerCase() === key.toLowerCase());
@@ -186,59 +185,119 @@ function normalizeRows(rawRows) {
     }
     return null;
   };
+
+  // ATS 35/36 -> Standort-Schluessel der Baselines (5335 = Koeln, 5336 = Bonn)
+  const standortAus = (row) => {
+    const ats = String(get(row, "ats") || "").trim();
+    if (ats === "36") return "5336";
+    if (ats === "35") return "5335";
+    const od = String(get(row, "od") || "").trim();
+    if (od === "5336" || od === "5335") return od;
+    const st = String(get(row, "standort") || "").trim();
+    if (st === "5336" || st === "5335") return st;
+    return "5335";
+  };
+
   return filtered
-    .filter(row => { const name = get(row, "name"); return name && String(name).trim().length > 2; })
+    .filter(row => { const name = get(row, "name", "techniker"); return name && String(name).trim().length > 2; })
     .map(row => {
-      const name = String(get(row, "name") || "").trim();
-      const rawStandort = String(get(row, "standort") || "").trim();
-      const standortKlar = rawStandort === "5335" || rawStandort === "5336";
-      const standort = standortKlar ? rawStandort : "5335";
+      const name = String(get(row, "name", "techniker") || "").trim();
+      const standort = standortAus(row);
+
       if (fmt === "smsfeedback") {
-        // NPS: direkt als Zahl (z.B. 100, 50, 33) oder als Prozent
         const npsRaw = get(row, "nps pb") ?? get(row, "nps bs") ?? get(row, "nps");
-        const npsVal = npsRaw !== null && npsRaw !== undefined ? parseFloat(String(npsRaw).replace(",", ".").replace("%","")) : null;
-        return { 
-          name, 
-          standort: String(get(row, "od") || "5335"), 
-          cc_rate: parsePercent(get(row, "cc")), 
+        const npsVal = npsRaw !== null && npsRaw !== undefined
+          ? parseFloat(String(npsRaw).replace(",", ".").replace("%", "")) : null;
+        return {
+          name, standort,
+          cc_rate: parsePercent(get(row, "cc")),
           termintreue: parsePercent(get(row, "termintreue")),
           loesungsquote: parsePercent(get(row, "erledigt b") ?? get(row, "erledigt")),
           infoquote_p: parsePercent(get(row, "infoquote p")),
           geplatzte_termine: parsePercent(get(row, "t. geplatz")),
-          sterne: parseFloat(String(get(row, "sterne") || "").replace(",",".")) || null,
+          sterne: parseFloat(String(get(row, "sterne") || "").replace(",", ".")) || null,
           anzahl_nps: parseInt(get(row, "anzahl nps gesamt")) || null,
           nps: isNaN(npsVal) ? null : npsVal,
-          auftraege: get(row, "anzahl") || "-", 
-          quelle: "smsfeedback", 
-          standortUnbekannt: false 
+          auftraege: get(row, "anzahl") || "-",
+          quelle: "smsfeedback", standortUnbekannt: false
         };
       }
+
       if (fmt === "smsfeedbackschalten") {
         const npsRaw = get(row, "nps");
-        const npsVal = npsRaw !== null && npsRaw !== undefined ? parseFloat(String(npsRaw).replace(",", ".")) : null;
-        return { name, standort: "5335", 
-          cc_rate: parsePercent(get(row, "courtesy call")), 
+        const npsVal = npsRaw !== null && npsRaw !== undefined
+          ? parseFloat(String(npsRaw).replace(",", ".")) : null;
+        return {
+          name, standort,
+          cc_rate: parsePercent(get(row, "courtesy call")),
           termintreue: parsePercent(get(row, "termintreue mit st vo") ?? get(row, "termintreue ohne st vo")),
           loesungsquote: parsePercent(get(row, "erledigt")),
           nps: isNaN(npsVal) ? null : npsVal,
           auftraege: get(row, "anzahl") || "-",
           anzahl_nps: parseInt(get(row, "anzahl nps")) || null,
-          quelle: "smsfeedbackschalten", standortUnbekannt: false };
+          quelle: "smsfeedbackschalten", standortUnbekannt: false
+        };
       }
-      if (fmt === "nftq") return { name, standort: "5335", cc_rate: null, termintreue: null, loesungsquote: null, nftq_b: parsePercent(get(row, "nftq b")), nftq_s: parsePercent(get(row, "nftq s")), nftq_m: parsePercent(get(row, "nftq m")), nftq_p: parsePercent(get(row, "nftq p")), auftraege: get(row, "anzahl") || "-", menge_b: parseInt(get(row, "bereitstellung")) || null, menge_s: parseInt(get(row, "schalten")) || null, menge_m: parseInt(get(row, "montage")) || null, menge_p: parseInt(get(row, "problembehebung")) || null, quelle: "nftq", standortUnbekannt: false };
-      return { name, standort, cc_rate: parsePercent(get(row, "cc_rate")), termintreue: parsePercent(get(row, "termintreue")), loesungsquote: parsePercent(get(row, "loesungsquote")), nps: parsePercent(get(row, "nps")), auftraege: get(row, "auftraege") || "-", quelle: "standard", standortUnbekannt: !standortKlar };
+
+      if (fmt === "nftq") {
+        return {
+          name, standort, cc_rate: null, termintreue: null, loesungsquote: null,
+          nftq_b: parsePercent(get(row, "nftq b")),
+          nftq_s: parsePercent(get(row, "nftq s")),
+          nftq_m: parsePercent(get(row, "nftq m")),
+          nftq_p: parsePercent(get(row, "nftq p")),
+          auftraege: get(row, "anzahl") || "-",
+          menge_b: parseInt(get(row, "bereitstellung")) || null,
+          menge_s: parseInt(get(row, "schalten")) || null,
+          menge_m: parseInt(get(row, "montage")) || null,
+          menge_p: parseInt(get(row, "problembehebung")) || null,
+          quelle: "nftq", standortUnbekannt: false
+        };
+      }
+
+      const rawStandort = String(get(row, "standort") || "").trim();
+      const standortKlar = rawStandort === "5335" || rawStandort === "5336";
+      return {
+        name, standort: standortKlar ? rawStandort : standort,
+        cc_rate: parsePercent(get(row, "cc_rate")),
+        termintreue: parsePercent(get(row, "termintreue")),
+        loesungsquote: parsePercent(get(row, "loesungsquote")),
+        nps: parsePercent(get(row, "nps")),
+        auftraege: get(row, "auftraege") || "-",
+        quelle: "standard", standortUnbekannt: !standortKlar
+      };
     });
 }
 
 function parseCSV(text) {
-  const lines = text.trim().split("\n");
+  const clean = String(text).replace(/^\uFEFF/, "");
+  const lines = clean.split(/\r?\n/).filter(l => l.trim().length);
   if (lines.length < 2) return [];
   const sep = lines[0].includes(";") ? ";" : ",";
-  const headers = lines[0].split(sep).map(h => h.trim().replace(/^"|"$/g, ""));
-  const rows = lines.slice(1).filter(l => l.trim()).map(line => {
-    const values = line.split(sep).map(v => v.trim().replace(/^"|"$/g, ""));
+
+  const splitLine = (line) => {
+    const out = [];
+    let cur = "", inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') {
+        if (inQuotes && line[i + 1] === '"') { cur += '"'; i++; }
+        else inQuotes = !inQuotes;
+      } else if (c === sep && !inQuotes) {
+        out.push(cur); cur = "";
+      } else {
+        cur += c;
+      }
+    }
+    out.push(cur);
+    return out.map(v => v.trim());
+  };
+
+  const headers = splitLine(lines[0]);
+  const rows = lines.slice(1).map(line => {
+    const values = splitLine(line);
     const obj = {};
-    headers.forEach((h, i) => (obj[h] = values[i] || ""));
+    headers.forEach((h, i) => (obj[h] = values[i] !== undefined ? values[i] : ""));
     return obj;
   });
   return normalizeRows(rows);
@@ -246,17 +305,16 @@ function parseCSV(text) {
 
 function getNPSStatus(nps) {
   if (nps === null || nps === undefined || isNaN(nps) || nps === "undefined") return null;
-  if (nps < 20) return "kritisch";  // Unter 20 = kritisch
-  if (nps < 50) return "warnung";   // Telekom-Zielwert >= 50
-  return "gut";
+  if (nps < 20) return "kritisch";   // NPS < 20 = kritisch
+  if (nps < 67) return "warnung";    // Telekom-Ziel >= 67  -> darunter Warnung
+  return "gut";                      // >= 67 = Ziel erreicht
 }
 
 function getStatus(value, baseline) {
   if (value === null || value === undefined || isNaN(value)) return "unbekannt";
-  const ratio = value / baseline;
-  if (ratio < 0.85) return "kritisch";
-  if (ratio < 0.93) return "warnung";
-  return "gut";
+  if (value >= baseline) return "gut";            // Ziel erreicht oder besser
+  if (value >= baseline * 0.9) return "warnung";  // bis 10% unter Ziel
+  return "kritisch";                              // mehr als 10% unter Ziel
 }
 
 function getOTStatus(tech) {
