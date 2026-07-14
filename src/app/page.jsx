@@ -1659,12 +1659,19 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
                 { label: "Kritisch", value: criticalCount, color: criticalCount > 0 ? "#f87171" : "#4ade80" },
                 { label: "Avg CC-Rate", value: avg("cc_rate") !== "-" ? avg("cc_rate") + "%" : "-", color: "#fbbf24" },
                 { label: "Avg Score", value: teamAvgScore() + "/10", color: scoreColor(parseFloat(teamAvgScore())) },
-              ]).map(s => (
-                <div key={s.label} style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8, padding: "12px 14px" }}>
-                  <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 4 }}>{s.label}</div>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: s.color, fontFamily: "monospace" }}>{s.value}</div>
-                </div>
-              ))}
+              ]).map(s => {
+                const klickbar = s.label === "Techniker" || s.label === "Kritisch";
+                const zielFilter = s.label === "Kritisch";
+                const aktiv = klickbar && zielFilter === nurKritisch;
+                return (
+                  <div key={s.label} onClick={klickbar ? () => setNurKritisch(zielFilter) : undefined}
+                    title={klickbar ? (zielFilter ? "Nur kritische Techniker anzeigen" : "Alle Techniker anzeigen") : undefined}
+                    style={{ background: "#111827", border: `1px solid ${aktiv ? "#3b82f6" : "#1f2937"}`, borderRadius: 8, padding: "12px 14px", cursor: klickbar ? "pointer" : "default" }}>
+                    <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 4 }}>{s.label}</div>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: s.color, fontFamily: "monospace" }}>{s.value}</div>
+                  </div>
+                );
+              })}
             </div>
 
             <div style={{ display: "flex", marginBottom: 16, borderBottom: "1px solid #1f2937" }}>
