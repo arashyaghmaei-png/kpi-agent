@@ -472,25 +472,26 @@ function OTStackedBar({ tech }) {
 }
 
 function TechCard({ tech, baselines, vorperiode }) {
-  const isNFTQ = tech.quelle === "nftq";
-  const isOT = tech.quelle === "onetouch";
   const bl = String(tech.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
-  let worst = "gut";
-  if (isOT) worst = getOTStatus(tech);
-  else if (isNFTQ) {
-    const vals = [tech.nftq_b, tech.nftq_s, tech.nftq_m, tech.nftq_p].filter(v => v !== null);
-    worst = vals.some(v => v > 8) ? "kritisch" : vals.some(v => v > 4) ? "warnung" : "gut";
-  } else {
-    const statuses = [
-      tech.cc_rate !== null ? getStatus(tech.cc_rate, bl.cc_rate) : null,
-      tech.termintreue !== null ? getStatus(tech.termintreue, bl.termintreue) : null,
-      tech.loesungsquote !== null ? getStatus(tech.loesungsquote, bl.loesungsquote) : null,
-      tech.nps !== null ? getNPSStatus(tech.nps) : null,
-    ].filter(Boolean);
-    worst = statuses.includes("kritisch") ? "kritisch" : statuses.includes("warnung") ? "warnung" : "gut";
+  // Bereiche nach Daten-Vorhandensein (so zeigt eine Kombi-Karte alle gleichzeitig)
+  const isOT = tech.a1 != null || tech.a_ges != null || tech.a0 != null || tech.quelle === "onetouch";
+  const isNFTQ = [tech.nftq_b, tech.nftq_s, tech.nftq_m, tech.nftq_p].some(v => v != null) || tech.quelle === "nftq";
+  const isSMS = tech.cc_rate != null || tech.termintreue != null || tech.loesungsquote != null || tech.nps != null;
+  const _stat = [];
+  if (isOT) _stat.push(getOTStatus(tech));
+  if (isNFTQ) {
+    const vals = [tech.nftq_b, tech.nftq_s, tech.nftq_m, tech.nftq_p].filter(v => v !== null && v !== undefined);
+    _stat.push(vals.some(v => v > 8) ? "kritisch" : vals.some(v => v > 4) ? "warnung" : "gut");
   }
+  if (isSMS) {
+    if (tech.cc_rate != null) _stat.push(getStatus(tech.cc_rate, bl.cc_rate));
+    if (tech.termintreue != null) _stat.push(getStatus(tech.termintreue, bl.termintreue));
+    if (tech.loesungsquote != null) _stat.push(getStatus(tech.loesungsquote, bl.loesungsquote));
+    if (tech.nps != null) _stat.push(getNPSStatus(tech.nps));
+  }
+  const worst = _stat.includes("kritisch") ? "kritisch" : _stat.includes("warnung") ? "warnung" : "gut";
   const borderColor = worst === "kritisch" ? "#7f1d1d" : worst === "warnung" ? "#78350f" : "#14532d";
-  const quelleLabel = { smsfeedback: "SMS-Feedback", smsfeedbackschalten: "Schalten", nftq: "NFTQ", standard: "Manuell", onetouch: "OneTouch" }[tech.quelle] || "";
+  const quelleLabel = { smsfeedback: "SMS-Feedback", smsfeedbackschalten: "Schalten", nftq: "NFTQ", standard: "Manuell", onetouch: "OneTouch", alle: "Alle" }[tech.quelle] || "";
   const npsStatus = tech.nps !== null ? getNPSStatus(tech.nps) : null;
   const npsColor = npsStatus === "kritisch" ? "#f87171" : npsStatus === "warnung" ? "#fbbf24" : "#4ade80";
   return (
@@ -530,7 +531,7 @@ function TechCard({ tech, baselines, vorperiode }) {
         <NFTQBar value={tech.nftq_m} label="Montage" />
         <NFTQBar value={tech.nftq_p} label="Problembehebung" />
       </>)}
-      {!isOT && !isNFTQ && (<>
+      {isSMS && (<>
         <KPIBar value={tech.cc_rate} baseline={bl.cc_rate} label="CC-Rate"
           trend={vorperiode ? getTrend(tech.cc_rate, vorperiode.cc_rate) : null} />
         <KPIBar value={tech.termintreue} baseline={bl.termintreue} label="Termintreue"
@@ -1148,7 +1149,21 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
   }, []);
 
   const angezeigt = (aktiveKategorie === "alle"
-    ? Object.values(gespeichert).flat().filter((t, idx, arr) => arr.findLastIndex(x => x.name === t.name && String(x.standort) === String(t.standort)) === idx)
+    ? (() => {
+        const merged = {};
+        const felder = ["cc_rate", "termintreue", "loesungsquote", "nps", "sterne", "infoquote_p",
+          "geplatzte_termine", "anzahl_nps", "a_ges", "a1", "a2", "a2plus", "ax", "a0", "tage",
+          "nftq_b", "nftq_s", "nftq_m", "nftq_p", "menge_b", "menge_s", "menge_m", "menge_p"];
+        Object.values(gespeichert).flat().forEach(t => {
+          const key = t.name + "#" + String(t.standort);
+          if (!merged[key]) merged[key] = { name: t.name, standort: t.standort, quelle: "alle", auftraege: 0, standortUnbekannt: t.standortUnbekannt };
+          const m = merged[key];
+          felder.forEach(f => { if ((m[f] === undefined || m[f] === null) && t[f] !== undefined && t[f] !== null) m[f] = t[f]; });
+          const auf = typeof t.auftraege === "number" ? t.auftraege : parseInt(t.auftraege) || 0;
+          if (auf > (m.auftraege || 0)) m.auftraege = auf;
+        });
+        return Object.values(merged);
+      })()
     : (gespeichert[aktiveKategorie] || [])
   ).filter(t => {
     const auftr = typeof t.auftraege === "number" ? t.auftraege : parseInt(t.auftraege) || 0;
@@ -1255,8 +1270,8 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
     if (!angezeigt.length) return;
     setLoading(true); setError(""); setAiAnalysis(""); setMassnahmen([]); setMassnahmenFehler(null);
     const dataStr = angezeigt.map(t => {
-      if (t.quelle === "onetouch") return `${t.name}: A-Ges=${t.a_ges?.toFixed(1) ?? "-"}%, A1=${t.a1?.toFixed(1) ?? "-"}%, AX=${t.ax?.toFixed(1) ?? "-"}%, A0=${t.a0?.toFixed(1) ?? "-"}%, Aufträge=${t.auftraege}`;
-      if (t.quelle === "nftq") return `${t.name}: NFTQ-B=${t.nftq_b?.toFixed(2) ?? "-"}%, NFTQ-S=${t.nftq_s?.toFixed(2) ?? "-"}%, NFTQ-M=${t.nftq_m?.toFixed(2) ?? "-"}%, NFTQ-P=${t.nftq_p?.toFixed(2) ?? "-"}%, Aufträge=${t.auftraege}`;
+      if (t.quelle === "onetouch") return `${t.name} (FS${t.standort}): A-Ges=${t.a_ges?.toFixed(1) ?? "-"}%, A1=${t.a1?.toFixed(1) ?? "-"}%, AX=${t.ax?.toFixed(1) ?? "-"}%, A0=${t.a0?.toFixed(1) ?? "-"}%, Aufträge=${t.auftraege}`;
+      if (t.quelle === "nftq") return `${t.name} (FS${t.standort}): NFTQ-B=${t.nftq_b?.toFixed(2) ?? "-"}%, NFTQ-S=${t.nftq_s?.toFixed(2) ?? "-"}%, NFTQ-M=${t.nftq_m?.toFixed(2) ?? "-"}%, NFTQ-P=${t.nftq_p?.toFixed(2) ?? "-"}%, Aufträge=${t.auftraege}`;
       return `${t.name} (FS${t.standort}): CC=${t.cc_rate?.toFixed(1) ?? "-"}%, Termintreue=${t.termintreue?.toFixed(1) ?? "-"}%, Lösungsquote=${t.loesungsquote?.toFixed(1) ?? "-"}%, NPS=${t.nps?.toFixed(0) ?? "-"}, Aufträge=${t.auftraege}`;
     }).join("\n");
     // Letzte archivierte KW fuer Vergleich
@@ -1265,8 +1280,8 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
       const letzteKW = archiv[archiv.length - 1];
       const vorTechs = Object.values(letzteKW.daten).flat();
       vorperiodeStr = "\n\nVorperiode (" + letzteKW.label + "):\n" + vorTechs.map(t => {
-        if (t.quelle === "onetouch") return `${t.name}: A1=${t.a1?.toFixed(1) ?? "-"}%, A-Ges=${t.a_ges?.toFixed(1) ?? "-"}%`;
-        if (t.quelle === "nftq") return `${t.name}: NFTQ-B=${t.nftq_b?.toFixed(2) ?? "-"}%, NFTQ-S=${t.nftq_s?.toFixed(2) ?? "-"}%, NFTQ-M=${t.nftq_m?.toFixed(2) ?? "-"}%, NFTQ-P=${t.nftq_p?.toFixed(2) ?? "-"}%`;
+        if (t.quelle === "onetouch") return `${t.name} (FS${t.standort}): A1=${t.a1?.toFixed(1) ?? "-"}%, A-Ges=${t.a_ges?.toFixed(1) ?? "-"}%`;
+        if (t.quelle === "nftq") return `${t.name} (FS${t.standort}): NFTQ-B=${t.nftq_b?.toFixed(2) ?? "-"}%, NFTQ-S=${t.nftq_s?.toFixed(2) ?? "-"}%, NFTQ-M=${t.nftq_m?.toFixed(2) ?? "-"}%, NFTQ-P=${t.nftq_p?.toFixed(2) ?? "-"}%`;
         return `${t.name}: CC=${t.cc_rate?.toFixed(1) ?? "-"}%, TT=${t.termintreue?.toFixed(1) ?? "-"}%, NPS=${t.nps?.toFixed(0) ?? "-"}`;
       }).join("\n");
     }
