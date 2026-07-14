@@ -117,7 +117,7 @@ function detectFormat(headers) {
 }
 
 function aggregateOneTouch(rawRows) {
-  const byName = {};
+  const gruppen = {};
   rawRows.forEach(row => {
     const rawHeaders = Object.keys(row);
     const get = (...keys) => {
@@ -129,8 +129,12 @@ function aggregateOneTouch(rawRows) {
     };
     const name = String(get("techniker", "name") || "").trim();
     if (!name || name.length < 2) return;
-    if (!byName[name]) byName[name] = [];
-    byName[name].push({
+    // ATS 35/36 -> Standort (35 = Koeln 5335, 36 = Bonn 5336)
+    const ats = String(get("ats") || "").trim();
+    const standort = ats === "36" ? "5336" : "5335";
+    const key = name + "#" + standort;   // getrennt nach Name + ATS
+    if (!gruppen[key]) gruppen[key] = { name, standort, days: [] };
+    gruppen[key].days.push({
       gesamt: parseFloat(get("gesamt") || 0) || 0,
       a_ges: parsePercent(get("a ges.", "a ges")),
       a1: parsePercent(get("a1")),
@@ -140,7 +144,7 @@ function aggregateOneTouch(rawRows) {
       a0: parsePercent(get("a0")),
     });
   });
-  return Object.entries(byName).map(([name, days]) => {
+  return Object.values(gruppen).map(({ name, standort, days }) => {
     const total = days.reduce((s, d) => s + d.gesamt, 0);
     const wavg = (key) => {
       const num = days.reduce((s, d) => d[key] !== null ? s + d[key] * d.gesamt : s, 0);
@@ -148,7 +152,7 @@ function aggregateOneTouch(rawRows) {
       return den > 0 ? Math.round(num / den * 10) / 10 : null;
     };
     return {
-      name, standort: "5335", auftraege: total,
+      name, standort, auftraege: total,
       a_ges: wavg("a_ges"), a1: wavg("a1"), a2: wavg("a2"),
       a2plus: wavg("a2plus"), ax: wavg("ax"), a0: wavg("a0"),
       tage: days.length, quelle: "onetouch",
