@@ -14,27 +14,29 @@ const DEFAULT_BASELINES = {
     cc_rate: 95,           // Courtesy Calls Zielwert
     termintreue: 96,       // Termintreue Zielwert
     loesungsquote: 95,     // Loesungsquote Bereitstellung
-    nps: 67,               // NPS Montage/Problembehebung
+    nps_montage: 68,       // NPS Montage (Spalte 'NPS BS')       - Portal ZW 68,0%
+    nps_pb: 68,            // NPS Problembehebung ('NPS PB')      - Portal ZW 68,0%
+    nps: 68,               // NPS Schalten (Report 'SMS Fb Schalten')
     // NFTQ
     nftq_montage: 4,       // NFTQ Montage Zielwert
-    nftq_schalten: 7,      // NFTQ Schalten Zielwert
-    nftq_pb: 8.7,          // NFTQ Problembehebung Zielwert
+    nftq_schalten: 6.6,    // NFTQ Schalten Zielwert              - Portal ZW 6,6%
+    nftq_pb: 8.5,          // NFTQ Problembehebung Zielwert       - Portal ZW 8,5%
     nftq_bereitstellung: 4,// NFTQ Bereitstellung Zielwert
     // Sonstige
     geplatzte_termine: 0.6,// Geplatzte Termine Zielwert
-    info_quote_pb: 87.5,   // Informationsquote PB
+    info_quote_pb: 90,     // Informationsquote PB                - Portal ZW 90,0%
     so_quote: 2,           // SO-Quote
     service_calls: 93,     // Service Calls Carrier
   },
   fs5335: {
-    cc_rate: 95, termintreue: 96, loesungsquote: 95, nps: 67,
-    nftq_montage: 4, nftq_schalten: 7, nftq_pb: 8.7, nftq_bereitstellung: 4,
-    geplatzte_termine: 0.6, info_quote_pb: 87.5, so_quote: 2, service_calls: 93,
+    cc_rate: 95, termintreue: 96, loesungsquote: 95, nps_montage: 68, nps_pb: 68, nps: 68,
+    nftq_montage: 4, nftq_schalten: 6.6, nftq_pb: 8.5, nftq_bereitstellung: 4,
+    geplatzte_termine: 0.6, info_quote_pb: 90, so_quote: 2, service_calls: 93,
   },
   fs5336: {
-    cc_rate: 95, termintreue: 96, loesungsquote: 95, nps: 67,
-    nftq_montage: 4, nftq_schalten: 7, nftq_pb: 8.7, nftq_bereitstellung: 4,
-    geplatzte_termine: 0.6, info_quote_pb: 87.5, so_quote: 2, service_calls: 93,
+    cc_rate: 95, termintreue: 96, loesungsquote: 95, nps_montage: 68, nps_pb: 68, nps: 68,
+    nftq_montage: 4, nftq_schalten: 6.6, nftq_pb: 8.5, nftq_bereitstellung: 4,
+    geplatzte_termine: 0.6, info_quote_pb: 90, so_quote: 2, service_calls: 93,
   },
 };
 const OT_BASELINE = { a_ges: 95.0, a1: 60.0 };
@@ -210,9 +212,12 @@ function normalizeRows(rawRows) {
       const standort = standortAus(row);
 
       if (fmt === "smsfeedback") {
-        const npsRaw = get(row, "nps pb") ?? get(row, "nps bs") ?? get(row, "nps");
-        const npsVal = npsRaw !== null && npsRaw !== undefined
-          ? parseFloat(String(npsRaw).replace(",", ".").replace("%", "")) : null;
+        // Zwei getrennte NPS: BS = Montage/Bereitstellung, PB = Problembehebung
+        const npsZahl = (r) => {
+          if (r === null || r === undefined || r === "") return null;
+          const v = parseFloat(String(r).replace(",", ".").replace("%", ""));
+          return isNaN(v) ? null : v;
+        };
         return {
           name, standort,
           cc_rate: parsePercent(get(row, "cc")),
@@ -222,7 +227,11 @@ function normalizeRows(rawRows) {
           geplatzte_termine: parsePercent(get(row, "t. geplatz")),
           sterne: parseFloat(String(get(row, "sterne") || "").replace(",", ".")) || null,
           anzahl_nps: parseInt(get(row, "anzahl nps gesamt")) || null,
-          nps: isNaN(npsVal) ? null : npsVal,
+          nps_montage: npsZahl(get(row, "nps bs")),
+          nps_pb: npsZahl(get(row, "nps pb")),
+          anzahl_nps_montage: parseInt(get(row, "anzahl nps bs")) || null,
+          anzahl_nps_pb: parseInt(get(row, "anzahl nps pb")) || null,
+          nps: null,
           auftraege: get(row, "anzahl") || "-",
           quelle: "smsfeedback", standortUnbekannt: false
         };
@@ -308,10 +317,10 @@ function parseCSV(text) {
   return normalizeRows(rows);
 }
 
-function getNPSStatus(nps) {
+function getNPSStatus(nps, ziel = 68) {
   if (nps === null || nps === undefined || isNaN(nps) || nps === "undefined") return null;
   if (nps < 20) return "kritisch";   // NPS < 20 = kritisch
-  if (nps < 67) return "warnung";    // Telekom-Ziel >= 67  -> darunter Warnung
+  if (nps < ziel) return "warnung";  // unter dem Zielwert -> Warnung
   return "gut";                      // >= 67 = Ziel erreicht
 }
 
@@ -340,7 +349,9 @@ function techWorst(t, baselines) {
   if (t.cc_rate != null) s.push(getStatus(t.cc_rate, bl.cc_rate));
   if (t.termintreue != null) s.push(getStatus(t.termintreue, bl.termintreue));
   if (t.loesungsquote != null) s.push(getStatus(t.loesungsquote, bl.loesungsquote));
-  if (t.nps != null) s.push(getNPSStatus(t.nps));
+  if (t.nps != null) s.push(getNPSStatus(t.nps, bl.nps ?? 67));
+  if (t.nps_montage != null) s.push(getNPSStatus(t.nps_montage, bl.nps_montage ?? 67));
+  if (t.nps_pb != null) s.push(getNPSStatus(t.nps_pb, bl.nps_pb ?? 67));
   return s.includes("kritisch") ? "kritisch" : s.includes("warnung") ? "warnung" : "gut";
 }
 
@@ -490,7 +501,7 @@ function TechCard({ tech, baselines, vorperiode }) {
   // Bereiche nach Daten-Vorhandensein (so zeigt eine Kombi-Karte alle gleichzeitig)
   const isOT = tech.a1 != null || tech.a_ges != null || tech.a0 != null || tech.quelle === "onetouch";
   const isNFTQ = [tech.nftq_b, tech.nftq_s, tech.nftq_m, tech.nftq_p].some(v => v != null) || tech.quelle === "nftq";
-  const isSMS = tech.cc_rate != null || tech.termintreue != null || tech.loesungsquote != null || tech.nps != null;
+  const isSMS = tech.cc_rate != null || tech.termintreue != null || tech.loesungsquote != null || tech.nps != null || tech.nps_montage != null || tech.nps_pb != null;
   const _stat = [];
   if (isOT) _stat.push(getOTStatus(tech));
   if (isNFTQ) {
@@ -501,7 +512,9 @@ function TechCard({ tech, baselines, vorperiode }) {
     if (tech.cc_rate != null) _stat.push(getStatus(tech.cc_rate, bl.cc_rate));
     if (tech.termintreue != null) _stat.push(getStatus(tech.termintreue, bl.termintreue));
     if (tech.loesungsquote != null) _stat.push(getStatus(tech.loesungsquote, bl.loesungsquote));
-    if (tech.nps != null) _stat.push(getNPSStatus(tech.nps));
+    if (tech.nps != null) _stat.push(getNPSStatus(tech.nps, bl.nps ?? 67));
+    if (tech.nps_montage != null) _stat.push(getNPSStatus(tech.nps_montage, bl.nps_montage ?? 67));
+    if (tech.nps_pb != null) _stat.push(getNPSStatus(tech.nps_pb, bl.nps_pb ?? 67));
   }
   const worst = _stat.includes("kritisch") ? "kritisch" : _stat.includes("warnung") ? "warnung" : "gut";
   const borderColor = worst === "kritisch" ? "#7f1d1d" : worst === "warnung" ? "#78350f" : "#14532d";
@@ -557,16 +570,24 @@ function TechCard({ tech, baselines, vorperiode }) {
         ); })()}
         <KPIBar value={tech.loesungsquote} baseline={bl.loesungsquote} label="Lösungsquote"
           trend={vorperiode ? getTrend(tech.loesungsquote, vorperiode.loesungsquote) : null} />
-        {tech.nps !== null ? (
-          <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 11, color: "#9ca3af" }}>NPS:</span>
-            <span style={{ color: npsColor, fontWeight: 700, fontSize: 13, fontFamily: "monospace" }}>{tech.nps.toFixed(0)}</span>
-            <span style={{ background: STATUS_STYLE[npsStatus]?.bg, color: npsColor, padding: "1px 6px", borderRadius: 3, fontSize: 10, fontFamily: "monospace", fontWeight: 700 }}>
-              {npsStatus === "kritisch" ? "KRITISCH" : npsStatus === "warnung" ? "WARNUNG" : "GUT"}
-            </span>
-            <span style={{ fontSize: 10, color: "#4b5563" }}>Basis: {String(tech.standort) === "5336" ? baselines.fs5336.nps : baselines.fs5335.nps}</span>
-          </div>
-        ) : null}
+        {[
+          { wert: tech.nps_montage, ziel: bl.nps_montage ?? 67, label: "NPS Montage", anz: tech.anzahl_nps_montage },
+          { wert: tech.nps_pb, ziel: bl.nps_pb ?? 67, label: "NPS Problembeh.", anz: tech.anzahl_nps_pb },
+          { wert: tech.nps, ziel: bl.nps ?? 67, label: "NPS", anz: tech.anzahl_nps },
+        ].filter(n => n.wert !== null && n.wert !== undefined && !isNaN(n.wert)).map(n => {
+          const st = getNPSStatus(n.wert, n.ziel);
+          const c = st === "kritisch" ? "#f87171" : st === "warnung" ? "#fbbf24" : "#4ade80";
+          return (
+            <div key={n.label} style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 11, color: "#9ca3af" }}>{n.label}:</span>
+              <span style={{ color: c, fontWeight: 700, fontSize: 13, fontFamily: "monospace" }}>{n.wert.toFixed(0)}</span>
+              <span style={{ background: STATUS_STYLE[st]?.bg, color: c, padding: "1px 6px", borderRadius: 3, fontSize: 10, fontFamily: "monospace", fontWeight: 700 }}>
+                {st === "kritisch" ? "KRITISCH" : st === "warnung" ? "WARNUNG" : "GUT"}
+              </span>
+              <span style={{ fontSize: 10, color: "#4b5563" }}>Ziel: {n.ziel}{n.anz ? ` (${n.anz} Rueckmeldungen)` : ""}</span>
+            </div>
+          );
+        })}
       </>)}
     </div>
   );
@@ -640,7 +661,7 @@ function AddKPIRow({ onAdd }) {
 
 function BaselineEditor({ baselines, onSave, onClose }) {
   const [local, setLocal] = useState(JSON.parse(JSON.stringify(baselines)));
-  const kpiLabels = { cc_rate: "CC-Rate %", termintreue: "Termintreue %", loesungsquote: "Lösungsquote %", nps: "NPS" };
+  const kpiLabels = { cc_rate: "CC-Rate %", termintreue: "Termintreue %", loesungsquote: "Lösungsquote %", nps_montage: "NPS Montage", nps_pb: "NPS Problembehebung", nps: "NPS Schalten", nftq_montage: "NFTQ Montage %", nftq_schalten: "NFTQ Schalten %", nftq_pb: "NFTQ Problembeh. %", nftq_bereitstellung: "NFTQ Bereitstellung %", geplatzte_termine: "Geplatzte Termine %", info_quote_pb: "Infoquote PB %", so_quote: "SO-Quote %", service_calls: "Service Calls %" };
   const standortLabels = { gesamt: "Gesamt (KW13-19)", fs5335: "FS5335", fs5336: "FS5336" };
   const inputStyle = { background: "#1f2937", border: "1px solid #374151", borderRadius: 5, padding: "5px 8px", color: "#e5e7eb", fontSize: 12, width: "80px", textAlign: "right" };
   return (
@@ -902,7 +923,7 @@ function ArchivPanel({ archiv, onDelete, onClose }) {
   const kategorieLabels = { smsfeedback: "SMS-Feedback", smsfeedbackschalten: "Schalten", nftq: "NFTQ", standard: "Manuell", onetouch: "OneTouch" };
   const exportCSV = (eintrag) => {
     const rows = Object.entries(eintrag.daten).flatMap(([kat, techs]) =>
-      techs.map(t => ({ Kategorie: kategorieLabels[kat] || kat, Name: t.name, Standort: `FS${t.standort}`, CC: t.cc_rate ?? "", Termintreue: t.termintreue ?? "", Loesungsquote: t.loesungsquote ?? "", NPS: t.nps ?? "", A1: t.a1 ?? "", A0: t.a0 ?? "" }))
+      techs.map(t => ({ Kategorie: kategorieLabels[kat] || kat, Name: t.name, Standort: `FS${t.standort}`, CC: t.cc_rate ?? "", Termintreue: t.termintreue ?? "", Loesungsquote: t.loesungsquote ?? "", NPS: t.nps ?? "", NPS_Montage: t.nps_montage ?? "", NPS_PB: t.nps_pb ?? "", A1: t.a1 ?? "", A0: t.a0 ?? "" }))
     );
     const header = Object.keys(rows[0]).join(";");
     const csv = [header, ...rows.map(r => Object.values(r).join(";"))].join("\n");
@@ -1195,6 +1216,8 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
       if (t.termintreue !== null) sl.push(getStatus(t.termintreue, bl.termintreue));
       if (t.loesungsquote !== null) sl.push(getStatus(t.loesungsquote, bl.loesungsquote));
       if (t.nps !== null) sl.push(getNPSStatus(t.nps));
+      if (t.nps_montage != null) sl.push(getNPSStatus(t.nps_montage));
+      if (t.nps_pb != null) sl.push(getNPSStatus(t.nps_pb));
       if (t.a1 !== null) sl.push(t.a1 >= 60 ? "gut" : t.a1 >= 45 ? "warnung" : "kritisch");
       if (t.a0 !== null && t.a0 > 10) sl.push("kritisch");
       if (t.nftq_b !== null) sl.push(t.nftq_b <= 4 ? "gut" : t.nftq_b <= 8 ? "warnung" : "kritisch");
@@ -1249,7 +1272,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
       ? `A-Gesamt=${tech.a_ges?.toFixed(1) ?? "-"}%, A1=${tech.a1?.toFixed(1) ?? "-"}%, AX=${tech.ax?.toFixed(1) ?? "-"}%, A0=${tech.a0?.toFixed(1) ?? "-"}%`
       : tech.quelle === "nftq"
       ? `NFTQ-B=${tech.nftq_b?.toFixed(2) ?? "-"}% (Ziel<=4%), NFTQ-S=${tech.nftq_s?.toFixed(2) ?? "-"}% (Ziel<=7%), NFTQ-M=${tech.nftq_m?.toFixed(2) ?? "-"}% (Ziel<=4%), NFTQ-P=${tech.nftq_p?.toFixed(2) ?? "-"}% (Ziel<=8.7%), Mengen: B=${tech.menge_b ?? "-"} S=${tech.menge_s ?? "-"} M=${tech.menge_m ?? "-"} P=${tech.menge_p ?? "-"}`
-      : `CC=${tech.cc_rate?.toFixed(1) ?? "-"}% (Ziel>=95%), Termintreue=${tech.termintreue?.toFixed(1) ?? "-"}% (Ziel>=96%), Loesungsquote=${tech.loesungsquote?.toFixed(1) ?? "-"}%, NPS=${tech.nps?.toFixed(0) ?? "-"} (Ziel>=67)`;
+      : `CC=${tech.cc_rate?.toFixed(1) ?? "-"}% (Ziel>=95%), Termintreue=${tech.termintreue?.toFixed(1) ?? "-"}% (Ziel>=96%), Loesungsquote=${tech.loesungsquote?.toFixed(1) ?? "-"}%, NPS-Montage=${tech.nps_montage?.toFixed(0) ?? "-"}, NPS-Problembehebung=${tech.nps_pb?.toFixed(0) ?? "-"}, NPS-Schalten=${tech.nps?.toFixed(0) ?? "-"} (NPS-Ziel jeweils >=67)`;
     setBewertungLoading(prev => ({ ...prev, [tech.name]: true }));
     try {
       const res = await fetch("/api/analyse", {
@@ -1287,7 +1310,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
     const dataStr = angezeigt.map(t => {
       if (t.quelle === "onetouch") return `${t.name} (FS${t.standort}): A-Ges=${t.a_ges?.toFixed(1) ?? "-"}%, A1=${t.a1?.toFixed(1) ?? "-"}%, AX=${t.ax?.toFixed(1) ?? "-"}%, A0=${t.a0?.toFixed(1) ?? "-"}%, Aufträge=${t.auftraege}`;
       if (t.quelle === "nftq") return `${t.name} (FS${t.standort}): NFTQ-B=${t.nftq_b?.toFixed(2) ?? "-"}%, NFTQ-S=${t.nftq_s?.toFixed(2) ?? "-"}%, NFTQ-M=${t.nftq_m?.toFixed(2) ?? "-"}%, NFTQ-P=${t.nftq_p?.toFixed(2) ?? "-"}%, Aufträge=${t.auftraege}`;
-      return `${t.name} (FS${t.standort}): CC=${t.cc_rate?.toFixed(1) ?? "-"}%, Termintreue=${t.termintreue?.toFixed(1) ?? "-"}%, Lösungsquote=${t.loesungsquote?.toFixed(1) ?? "-"}%, NPS=${t.nps?.toFixed(0) ?? "-"}, Aufträge=${t.auftraege}`;
+      return `${t.name} (FS${t.standort}): CC=${t.cc_rate?.toFixed(1) ?? "-"}%, Termintreue=${t.termintreue?.toFixed(1) ?? "-"}%, Lösungsquote=${t.loesungsquote?.toFixed(1) ?? "-"}%, NPS-Montage=${t.nps_montage?.toFixed(0) ?? "-"}, NPS-PB=${t.nps_pb?.toFixed(0) ?? "-"}, NPS-Schalten=${t.nps?.toFixed(0) ?? "-"}, Aufträge=${t.auftraege}`;
     }).join("\n");
     // Letzte archivierte KW fuer Vergleich
     let vorperiodeStr = "";
@@ -1297,7 +1320,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
       vorperiodeStr = "\n\nVorperiode (" + letzteKW.label + "):\n" + vorTechs.map(t => {
         if (t.quelle === "onetouch") return `${t.name} (FS${t.standort}): A1=${t.a1?.toFixed(1) ?? "-"}%, A-Ges=${t.a_ges?.toFixed(1) ?? "-"}%`;
         if (t.quelle === "nftq") return `${t.name} (FS${t.standort}): NFTQ-B=${t.nftq_b?.toFixed(2) ?? "-"}%, NFTQ-S=${t.nftq_s?.toFixed(2) ?? "-"}%, NFTQ-M=${t.nftq_m?.toFixed(2) ?? "-"}%, NFTQ-P=${t.nftq_p?.toFixed(2) ?? "-"}%`;
-        return `${t.name}: CC=${t.cc_rate?.toFixed(1) ?? "-"}%, TT=${t.termintreue?.toFixed(1) ?? "-"}%, NPS=${t.nps?.toFixed(0) ?? "-"}`;
+        return `${t.name}: CC=${t.cc_rate?.toFixed(1) ?? "-"}%, TT=${t.termintreue?.toFixed(1) ?? "-"}%, NPS-M=${t.nps_montage?.toFixed(0) ?? "-"}, NPS-PB=${t.nps_pb?.toFixed(0) ?? "-"}, NPS-S=${t.nps?.toFixed(0) ?? "-"}`;
       }).join("\n");
     }
 
@@ -1320,6 +1343,8 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
         if (v(t.termintreue) && bl.termintreue) statusList.push(getStatus(t.termintreue, bl.termintreue));
         if (v(t.loesungsquote) && bl.loesungsquote) statusList.push(getStatus(t.loesungsquote, bl.loesungsquote));
         if (v(t.nps)) statusList.push(getNPSStatus(t.nps));
+        if (v(t.nps_montage)) statusList.push(getNPSStatus(t.nps_montage));
+        if (v(t.nps_pb)) statusList.push(getNPSStatus(t.nps_pb));
         if (v(t.a1)) statusList.push(t.a1 >= 60 ? "gut" : t.a1 >= 45 ? "warnung" : "kritisch");
         if (v(t.a0) && t.a0 > 10) statusList.push("kritisch");
         if (v(t.nftq_b)) statusList.push(t.nftq_b <= 4 ? "gut" : t.nftq_b <= 8 ? "warnung" : "kritisch");   // Bereitstellung: Ziel 4%
@@ -1390,6 +1415,8 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
             t.cc_rate !== null ? getStatus(t.cc_rate, bl.cc_rate) : null,
             t.termintreue !== null ? getStatus(t.termintreue, bl.termintreue) : null,
             t.nps !== null ? getNPSStatus(t.nps) : null,
+            t.nps_montage != null ? getNPSStatus(t.nps_montage) : null,
+            t.nps_pb != null ? getNPSStatus(t.nps_pb) : null,
           ].filter(Boolean);
           status = statuses.includes("kritisch") ? "kritisch" : statuses.includes("warnung") ? "warnung" : "gut";
         }
@@ -1485,11 +1512,11 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
                 )}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-                {tech.cc_rate !== null && tech.cc_rate !== undefined && (() => { const s = getStatus(tech.cc_rate, (String(tech.standort)==="5336"?baselines.fs5336:baselines.fs5335).cc_rate); const c = s==="kritisch"?"#f87171":s==="warnung"?"#fbbf24":"#4ade80"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>CC {tech.cc_rate.toFixed(1)}%</span>; })()}
-                {tech.termintreue !== null && tech.termintreue !== undefined && (() => { const s = getStatus(tech.termintreue, (String(tech.standort)==="5336"?baselines.fs5336:baselines.fs5335).termintreue); const c = s==="kritisch"?"#f87171":s==="warnung"?"#fbbf24":"#4ade80"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>TT {tech.termintreue.toFixed(1)}%</span>; })()}
-                {tech.loesungsquote !== null && tech.loesungsquote !== undefined && (() => { const s = getStatus(tech.loesungsquote, (String(tech.standort)==="5336"?baselines.fs5336:baselines.fs5335).loesungsquote); const c = s==="kritisch"?"#f87171":s==="warnung"?"#fbbf24":"#4ade80"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>LQ {tech.loesungsquote.toFixed(1)}%</span>; })()}
-                {tech.nps !== null && tech.nps !== undefined && (() => { const s = getNPSStatus(tech.nps); const c = s==="kritisch"?"#f87171":s==="warnung"?"#fbbf24":"#4ade80"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>NPS {tech.nps.toFixed(0)}</span>; })()}
-                {tech.a1 !== null && tech.a1 !== undefined && (() => { const c = tech.a1>=60?"#4ade80":tech.a1>=45?"#fbbf24":"#f87171"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>A1 {tech.a1.toFixed(1)}%</span>; })()}
+                {tech.cc_rate !== null && tech.cc_rate !== undefined && (() => { const z = (String(tech.standort)==="5336"?baselines.fs5336:baselines.fs5335).cc_rate; const s = getStatus(tech.cc_rate, z); const c = s==="kritisch"?"#f87171":s==="warnung"?"#fbbf24":"#4ade80"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>CC {tech.cc_rate.toFixed(1)}% / &gt;={z}%</span>; })()}
+                {tech.termintreue !== null && tech.termintreue !== undefined && (() => { const z = (String(tech.standort)==="5336"?baselines.fs5336:baselines.fs5335).termintreue; const s = getStatus(tech.termintreue, z); const c = s==="kritisch"?"#f87171":s==="warnung"?"#fbbf24":"#4ade80"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>TT {tech.termintreue.toFixed(1)}% / &gt;={z}%</span>; })()}
+                {tech.loesungsquote !== null && tech.loesungsquote !== undefined && (() => { const z = (String(tech.standort)==="5336"?baselines.fs5336:baselines.fs5335).loesungsquote; const s = getStatus(tech.loesungsquote, z); const c = s==="kritisch"?"#f87171":s==="warnung"?"#fbbf24":"#4ade80"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>LQ {tech.loesungsquote.toFixed(1)}% / &gt;={z}%</span>; })()}
+                {(() => { const b = String(tech.standort)==="5336"?baselines.fs5336:baselines.fs5335; const kand = [[tech.nps, b.nps ?? 67], [tech.nps_pb, b.nps_pb ?? 67], [tech.nps_montage, b.nps_montage ?? 67]].find(([v]) => v !== null && v !== undefined && !isNaN(v)); if (!kand) return null; const [nv, z] = kand; const s = getNPSStatus(nv, z); const c = s==="kritisch"?"#f87171":s==="warnung"?"#fbbf24":"#4ade80"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>NPS {nv.toFixed(0)} / &gt;={z}</span>; })()}
+                {tech.a1 !== null && tech.a1 !== undefined && (() => { const c = tech.a1>=60?"#4ade80":tech.a1>=45?"#fbbf24":"#f87171"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>A1 {tech.a1.toFixed(1)}% / &gt;={OT_BASELINE.a1}%</span>; })()}
                 {tech.nftq_b !== null && tech.nftq_b !== undefined && (() => { const c = tech.nftq_b<=4?"#4ade80":tech.nftq_b<=8?"#fbbf24":"#f87171"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>NFTQ-B {tech.nftq_b.toFixed(1)}%</span>; })()}
                 {tech.nftq_s !== null && tech.nftq_s !== undefined && (() => { const c = tech.nftq_s<=4?"#4ade80":tech.nftq_s<=8?"#fbbf24":"#f87171"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>NFTQ-S {tech.nftq_s.toFixed(1)}%</span>; })()}
                 {tech.nftq_m !== null && tech.nftq_m !== undefined && (() => { const c = tech.nftq_m<=4?"#4ade80":tech.nftq_m<=8?"#fbbf24":"#f87171"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>NFTQ-M {tech.nftq_m.toFixed(1)}%</span>; })()}
