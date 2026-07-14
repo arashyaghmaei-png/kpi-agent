@@ -330,6 +330,19 @@ function getOTStatus(tech) {
   return "gut";
 }
 
+function techWorst(t, baselines) {
+  const bl = String(t.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
+  const s = [];
+  if (t.a1 != null || t.a_ges != null || t.a0 != null) s.push(getOTStatus(t));
+  const nf = [t.nftq_b, t.nftq_s, t.nftq_m, t.nftq_p].filter(v => v != null);
+  if (nf.length) s.push(nf.some(v => v > 8) ? "kritisch" : nf.some(v => v > 4) ? "warnung" : "gut");
+  if (t.cc_rate != null) s.push(getStatus(t.cc_rate, bl.cc_rate));
+  if (t.termintreue != null) s.push(getStatus(t.termintreue, bl.termintreue));
+  if (t.loesungsquote != null) s.push(getStatus(t.loesungsquote, bl.loesungsquote));
+  if (t.nps != null) s.push(getNPSStatus(t.nps));
+  return s.includes("kritisch") ? "kritisch" : s.includes("warnung") ? "warnung" : "gut";
+}
+
 function getTrend(current, previous) {
   if (current === null || current === undefined || previous === null || previous === undefined) return null;
   const diff = current - previous;
@@ -598,7 +611,7 @@ function MassnahmenPanel({ massnahmen, parseError, kontakte }) {
                 <div style={{ fontSize: 12, color: "#d1d5db", lineHeight: 1.5 }}>{m.massnahme}</div>
               </div>
               <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                <a href={mailto} style={{ background: "#1d4ed8", color: "#fff", padding: "5px 10px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600 }}> Email</a>
+                <button onClick={() => { navigator.clipboard.writeText(`An: ${k.email || "(keine Adresse hinterlegt)"}\nBetreff: ${m.betreff || "KPI Massnahme"}\n\n${body}`); alert("Mail in die Zwischenablage kopiert.\n\nOutlook oeffnen -> neue Mail -> Strg+V."); }} style={{ background: "#1d4ed8", color: "#fff", padding: "5px 10px", borderRadius: 5, fontSize: 11, fontWeight: 600, border: "none", cursor: "pointer" }}> Email kopieren</button>
                 {waLink ? <a href={waLink} target="_blank" rel="noreferrer" style={{ background: "#15803d", color: "#fff", padding: "5px 10px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600 }}> WA</a> : null}
               </div>
             </div>
@@ -1001,6 +1014,7 @@ export default function KPIAgent() {
   const [loginError, setLoginError] = useState("");
   const [currentUser, setCurrentUser] = useState("");
   const [minAuftraege, setMinAuftraege] = useState(1);
+  const [nurKritisch, setNurKritisch] = useState(false);
   const [showVerlauf, setShowVerlauf] = useState(null);
   const [uploadPeriod, setUploadPeriod] = useState(null); // { von, bis, kw, label }
   const [showPeriodDialog, setShowPeriodDialog] = useState(false);
@@ -1408,16 +1422,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
     if (aktiveKategorie === quelle) setAktiveKategorie("alle");
   };
 
-  const criticalCount = angezeigt.filter(t => {
-    if (t.quelle === "onetouch") return getOTStatus(t) === "kritisch";
-    if (t.quelle === "nftq") return [t.nftq_b, t.nftq_s, t.nftq_m, t.nftq_p].filter(Boolean).some(v => v > 8);
-    const bl = String(t.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
-    return [
-      t.cc_rate !== null ? getStatus(t.cc_rate, bl.cc_rate) : null,
-      t.termintreue !== null ? getStatus(t.termintreue, bl.termintreue) : null,
-      t.nps !== null ? getNPSStatus(t.nps) : null,
-    ].includes("kritisch");
-  }).length;
+  const criticalCount = angezeigt.filter(t => techWorst(t, baselines) === "kritisch").length;
 
   const avg = (key) => {
     const vals = angezeigt.map(t => t[key]).filter(v => v !== null && !isNaN(v));
@@ -1433,7 +1438,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
 
   const FirmendashboardTab = () => {
     if (!angezeigt || !angezeigt.length) return null;
-    const sorted = [...angezeigt].sort((a, b) => (berechneTechScore(b) || 0) - (berechneTechScore(a) || 0));
+    const sorted = [...angezeigt].filter(t => !nurKritisch || techWorst(t, baselines) === "kritisch").sort((a, b) => (berechneTechScore(b) || 0) - (berechneTechScore(a) || 0));
     return (
       <div>
         <div style={{ background: "#0f172a", border: "1px solid #1f2937", borderRadius: 8, padding: "16px", marginBottom: 20 }}>
@@ -1507,7 +1512,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
                     style={{ background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 5, cursor: "pointer", fontSize: 11, padding: "5px 12px", fontWeight: 600 }}> Bewerten</button>
                 )}
                 {bew && k.email && (
-                  <a href={mailto} style={{ background: "#1d4ed8", color: "#fff", padding: "5px 12px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600 }}> Mail senden</a>
+                  <button onClick={() => { navigator.clipboard.writeText(`An: ${k.email || "(keine Adresse hinterlegt)"}\nBetreff: KPI-Bewertung ${tech.name}\n\n${mailBody}`); alert("Mail in die Zwischenablage kopiert.\n\nOutlook oeffnen -> neue Mail -> Strg+V."); }} style={{ background: "#1d4ed8", color: "#fff", padding: "5px 12px", borderRadius: 5, fontSize: 11, fontWeight: 600, border: "none", cursor: "pointer" }}> Mail kopieren</button>
                 )}
                 {bew && !k.email && <span style={{ fontSize: 10, color: "#6b7280" }}>! Keine Email - unter  eintragen</span>}
                 {archiv.length > 0 && <button onClick={() => setShowVerlauf(tech.name)} style={{ background: "#0f172a", color: "#60a5fa", border: "1px solid #1e3a5f", borderRadius: 5, cursor: "pointer", fontSize: 11, padding: "5px 12px" }}>Verlauf</button>}
@@ -1600,6 +1605,10 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
               style={{ width: 36, background: "transparent", border: "none", color: "#e5e7eb", fontSize: 11, textAlign: "center", outline: "none" }} />
             <span style={{ fontSize: 10, color: "#6b7280" }}>Auftr.</span>
           </div>
+          <button onClick={() => setNurKritisch(v => !v)} title="Zwischen allen und nur kritischen Technikern umschalten"
+            style={{ background: nurKritisch ? "#7f1d1d" : "#111827", color: nurKritisch ? "#fecaca" : "#9ca3af", border: `1px solid ${nurKritisch ? "#b91c1c" : "#374151"}`, padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
+            {nurKritisch ? "Nur kritische" : "Alle"}
+          </button>
           <label style={{ background: loading ? "#1a2e1a" : "#1f2937", color: loading ? "#4ade80" : "#9ca3af", border: `1px solid ${loading ? "#14532d" : "#374151"}`, padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>
             {loading ? "... Nächste" : " Upload"}
             <input type="file" accept=".csv,.xlsx,.xls,.png,.jpg,.jpeg,.pdf" onChange={handleFile} style={{ display: "none" }} />
@@ -1673,7 +1682,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
 
             {activeTab === "dashboard" && (
               <>
-                <div style={{ marginBottom: 16 }}>{angezeigt.map((t, i) => {
+                <div style={{ marginBottom: 16 }}>{angezeigt.filter(t => !nurKritisch || techWorst(t, baselines) === "kritisch").map((t, i) => {
                   const vorTechs = archiv.length > 0 ? Object.values(archiv[archiv.length-1].daten).flat() : [];
                   const vorperiode = vorTechs.find(v => v.name === t.name) || null;
                   return <TechCard key={i} tech={t} baselines={baselines} vorperiode={vorperiode} />;
