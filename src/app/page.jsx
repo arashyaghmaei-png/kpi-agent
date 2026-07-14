@@ -1144,7 +1144,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
   }, []);
 
   const angezeigt = (aktiveKategorie === "alle"
-    ? Object.values(gespeichert).flat().filter((t, idx, arr) => arr.findLastIndex(x => x.name === t.name) === idx)
+    ? Object.values(gespeichert).flat().filter((t, idx, arr) => arr.findLastIndex(x => x.name === t.name && String(x.standort) === String(t.standort)) === idx)
     : (gespeichert[aktiveKategorie] || [])
   ).filter(t => {
     const auftr = typeof t.auftraege === "number" ? t.auftraege : parseInt(t.auftraege) || 0;
@@ -1523,7 +1523,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
 
       {/* KPI Warnungsleiste */}
       {(() => {
-        const alleTechs = Object.values(gespeichert).flat().filter((t, idx, arr) => arr.findLastIndex(x => x.name === t.name) === idx);
+        const alleTechs = Object.values(gespeichert).flat().filter((t, idx, arr) => arr.findLastIndex(x => x.name === t.name && String(x.standort) === String(t.standort)) === idx);
         const kritisch = alleTechs.filter(t => t.overallStatus === "kritisch");
         const warnung = alleTechs.filter(t => t.overallStatus === "warnung");
         if (kritisch.length === 0 && warnung.length === 0) return null;
@@ -1551,7 +1551,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
             {KATEGORIEN.map(k => {
               const anzahl = k.id === "alle"
-                ? Object.values(gespeichert).flat().filter((t, idx, arr) => arr.findLastIndex(x => x.name === t.name) === idx).length
+                ? Object.values(gespeichert).flat().filter((t, idx, arr) => arr.findLastIndex(x => x.name === t.name && String(x.standort) === String(t.standort)) === idx).length
                 : (gespeichert[k.id] || []).length;
               const aktiv = aktiveKategorie === k.id;
               const hatDatenInKat = k.id === "alle" ? hatDaten : anzahl > 0;
