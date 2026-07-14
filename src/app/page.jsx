@@ -611,7 +611,7 @@ function MassnahmenPanel({ massnahmen, parseError, kontakte }) {
                 <div style={{ fontSize: 12, color: "#d1d5db", lineHeight: 1.5 }}>{m.massnahme}</div>
               </div>
               <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                <button onClick={() => { navigator.clipboard.writeText(`An: ${k.email || "(keine Adresse hinterlegt)"}\nBetreff: ${m.betreff || "KPI Massnahme"}\n\n${body}`); alert("Mail in die Zwischenablage kopiert.\n\nOutlook oeffnen -> neue Mail -> Strg+V."); }} style={{ background: "#1d4ed8", color: "#fff", padding: "5px 10px", borderRadius: 5, fontSize: 11, fontWeight: 600, border: "none", cursor: "pointer" }}> Email kopieren</button>
+                <a href={mailto} style={{ background: "#1d4ed8", color: "#fff", padding: "5px 10px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600 }}> Email</a>
                 {waLink ? <a href={waLink} target="_blank" rel="noreferrer" style={{ background: "#15803d", color: "#fff", padding: "5px 10px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600 }}> WA</a> : null}
               </div>
             </div>
@@ -1512,7 +1512,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
                     style={{ background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 5, cursor: "pointer", fontSize: 11, padding: "5px 12px", fontWeight: 600 }}> Bewerten</button>
                 )}
                 {bew && k.email && (
-                  <button onClick={() => { navigator.clipboard.writeText(`An: ${k.email || "(keine Adresse hinterlegt)"}\nBetreff: KPI-Bewertung ${tech.name}\n\n${mailBody}`); alert("Mail in die Zwischenablage kopiert.\n\nOutlook oeffnen -> neue Mail -> Strg+V."); }} style={{ background: "#1d4ed8", color: "#fff", padding: "5px 12px", borderRadius: 5, fontSize: 11, fontWeight: 600, border: "none", cursor: "pointer" }}> Mail kopieren</button>
+                  <a href={mailto} style={{ background: "#1d4ed8", color: "#fff", padding: "5px 12px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600 }}> Mail senden</a>
                 )}
                 {bew && !k.email && <span style={{ fontSize: 10, color: "#6b7280" }}>! Keine Email - unter  eintragen</span>}
                 {archiv.length > 0 && <button onClick={() => setShowVerlauf(tech.name)} style={{ background: "#0f172a", color: "#60a5fa", border: "1px solid #1e3a5f", borderRadius: 5, cursor: "pointer", fontSize: 11, padding: "5px 12px" }}>Verlauf</button>}
