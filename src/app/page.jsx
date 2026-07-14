@@ -7,6 +7,7 @@ import html2canvas from "html2canvas";
 
 const BASELINE_KEY = "fibernc_baselines";
 const ARCHIV_KEY = "fibernc_archiv";
+const FIRMA = (typeof window !== "undefined" && localStorage.getItem("firma_name")) || "Vikuline";   // Firmenname - im Agenten ueber den 'Firma'-Knopf aenderbar
 const DEFAULT_BASELINES = {
   gesamt: {
     // SMS-Feedback
@@ -599,8 +600,8 @@ function MassnahmenPanel({ massnahmen, parseError, kontakte }) {
       {massnahmen.map((m, i) => {
         const k = kontakte[m.name] || {};
         const body = m.status === "gut"
-          ? `Hallo ${m.name.split(" ")[0]},\n\nwir möchten Ihnen ein herzliches Lob für Ihre hervorragenden KPI-Werte aussprechen!\n\n${m.massnahme}\n\nWeiter so - Sie sind ein wertvoller Teil unseres Teams!\n\nMit freundlichen Grüßen\nFiberNC Leitstelle`
-          : `Hallo ${m.name.split(" ")[0]},\n\nfolgende Maßnahme wurde für Sie festgelegt:\n\n${m.massnahme}\n\nBitte bestätigen Sie die Umsetzung.\n\nMit freundlichen Grüßen\nFiberNC Leitstelle`;
+          ? `Hallo ${m.name.split(" ")[0]},\n\nwir möchten Ihnen ein herzliches Lob für Ihre hervorragenden KPI-Werte aussprechen!\n\n${m.massnahme}\n\nWeiter so - Sie sind ein wertvoller Teil unseres Teams!\n\nMit freundlichen Grüßen\n${FIRMA} Leitstelle`
+          : `Hallo ${m.name.split(" ")[0]},\n\nfolgende Maßnahme wurde für Sie festgelegt:\n\n${m.massnahme}\n\nBitte bestätigen Sie die Umsetzung.\n\nMit freundlichen Grüßen\n${FIRMA} Leitstelle`;
         const mailto = `mailto:${k.email || ""}?subject=${encodeURIComponent(m.betreff || "KPI Maßnahme")}&body=${encodeURIComponent(body)}`;
         const waLink = k.mobil ? `https://wa.me/${k.mobil.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(m.massnahme)}` : null;
         return (
@@ -1099,7 +1100,7 @@ export default function KPIAgent() {
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
           max_tokens: 3000,
-          system: `Du bist ein Datenextraktor fuer Telekom-KPI-Reports von FiberNC. Extrahiere ALLE Techniker-Daten aus dem Bild als CSV.
+          system: `Du bist ein Datenextraktor fuer Telekom-KPI-Reports von ${FIRMA}. Extrahiere ALLE Techniker-Daten aus dem Bild als CSV.
 
 WICHTIG: Erkenne den Report-Typ automatisch:
 
@@ -1463,7 +1464,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
           const isLoadingThis = bewertungLoading[tech.name];
           const k = kontakte[tech.name] || {};
           const mailBody = bew
-            ? `Hallo ${tech.name.split(" ")[0]},\n\nhier ist Ihre persönliche KPI-Bewertung:\n\nScore: ${score}/10 - ${scoreLabel(score)}\n\n${bew.kommentar}\n\n${bew.staerken?.length ? `Stärken:\n${bew.staerken.map(s => `• ${s}`).join("\n")}\n\n` : ""}${bew.schwaechen?.length ? `Verbesserungsbedarf:\n${bew.schwaechen.map(s => `• ${s}`).join("\n")}\n\n` : ""}Maßnahme: ${bew.massnahme || ""}\n\nMit freundlichen Grüßen\nFiberNC Leitstelle`
+            ? `Hallo ${tech.name.split(" ")[0]},\n\nhier ist Ihre persönliche KPI-Bewertung:\n\nScore: ${score}/10 - ${scoreLabel(score)}\n\n${bew.kommentar}\n\n${bew.staerken?.length ? `Stärken:\n${bew.staerken.map(s => `• ${s}`).join("\n")}\n\n` : ""}${bew.schwaechen?.length ? `Verbesserungsbedarf:\n${bew.schwaechen.map(s => `• ${s}`).join("\n")}\n\n` : ""}Maßnahme: ${bew.massnahme || ""}\n\nMit freundlichen Grüßen\n${FIRMA} Leitstelle`
             : "";
           const mailto = `mailto:${k.email || ""}?subject=${encodeURIComponent(`KPI-Bewertung ${tech.name}`)}&body=${encodeURIComponent(mailBody)}`;
           return (
@@ -1571,7 +1572,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
           <button onClick={() => window.location.reload()} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
             <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: 2, color: "#9ca3af", textTransform: "uppercase" }}>KPI Agent </span>
           </button>
-          <span style={{ color: "#374151" }}>.</span>
+          <span style={{ color: "#374151" }}> · {FIRMA}</span>
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
             {KATEGORIEN.map(k => {
               const anzahl = k.id === "alle"
@@ -1593,6 +1594,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
           </div>
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          <button onClick={() => { const n = window.prompt("Firmenname (erscheint in Kopfzeile, Mails und KI-Analyse):", FIRMA); if (n && n.trim()) { localStorage.setItem("firma_name", n.trim()); window.location.reload(); } }} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}> Firma</button>
           <button onClick={() => setShowKontakte(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}> Kontakte</button>
           <button onClick={() => setShowBaseline(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}> Baselines</button>
           <button onClick={() => setShowTechVerwaltung(true)} style={{ background: "#111827", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}> Techniker</button>
