@@ -317,11 +317,51 @@ function parseCSV(text) {
   return normalizeRows(rows);
 }
 
-function getNPSStatus(nps, ziel = 68) {
+// Mindestmengen - keine Telekom-Vorgabe, sondern dieselbe Entscheidung wie in
+// kpi_uebersicht.py ([U]). Anlass KW28: Ali Sodjajy stand mit NFTQ-S 33,3 % als
+// kritisch da - dahinter steckte EIN NFT bei DREI Schalten-Auftraegen. Bei so
+// kleinen Mengen misst die Quote den Zufall, nicht die Arbeit.
+// Diese zwei Zahlen MUESSEN mit kpi_uebersicht.py uebereinstimmen, sonst sagen
+// Excel und Agent Verschiedenes ueber denselben Mann.
+const MINDEST_NFTQ = 10;   // Auftraege in DER Kategorie
+const MINDEST_NPS = 2;     // Rueckmeldungen. Bei einer ist NPS nur +100 oder -100.
+
+function getNPSStatus(nps, ziel = 68, menge = null) {
   if (nps === null || nps === undefined || isNaN(nps) || nps === "undefined") return null;
-  if (nps < 20) return "kritisch";   // NPS < 20 = kritisch
-  if (nps < ziel) return "warnung";  // unter dem Zielwert -> Warnung
-  return "gut";                      // >= 67 = Ziel erreicht
+  // Zu duenne Datenlage: Wert anzeigen, aber nicht bewerten.
+  if (menge !== null && menge !== undefined && menge < MINDEST_NPS) return null;
+  if (nps >= ziel) return "gut";
+  if (nps >= 40) return "warnung";   // wie [U]: kritisch erst unter 40.
+  return "kritisch";                 // Frueher stand hier 20 - der Agent sagte
+                                     // dann "warnung", wo die Excel "kritisch"
+                                     // sagte (Tsoukalas KW28, NPS PB 33,3).
+}
+
+// NFTQ ist eine FEHLERQUOTE: niedriger ist besser, und jede Kategorie hat einen
+// EIGENEN Zielwert aus dem Portal. Vorher stand an beiden Status-Stellen hart
+// "<= 4 gut, <= 8 warnung" fuer alle vier Spalten - die Zielwerte oben in den
+// Baselines wurden nie benutzt. Ein NFTQ-P von 9,1 % galt damit als kritisch,
+// obwohl der ZW 8,5 mit Warnbereich bis 12 ist.
+function getNFTQStatus(wert, ziel, warn, menge) {
+  if (wert === null || wert === undefined || isNaN(wert)) return null;
+  if (menge !== null && menge !== undefined && menge < MINDEST_NFTQ) return null;
+  if (wert <= ziel) return "gut";
+  if (wert <= warn) return "warnung";
+  return "kritisch";
+}
+
+// Die drei bewerteten NFTQ-Kategorien mit ihren Portal-Zielwerten.
+// NFTQ-B (Bereitstellung) steht bewusst NICHT hier: Bereitstellung = Schalten +
+// Montage, B ist also nur die Sammelquote der beiden. Wer B mitzaehlt, zaehlt
+// dieselben NFTs zweimal - der Techniker sieht doppelt so schlecht aus, wie er
+// ist. Telekom hat fuer B folgerichtig auch keinen Zielwert. B wird weiter
+// ANGEZEIGT, aber nicht bewertet.
+function nftqStatusListe(t, bl) {
+  return [
+    getNFTQStatus(t.nftq_s, bl.nftq_schalten ?? 6.6, 10, t.menge_s),
+    getNFTQStatus(t.nftq_m, bl.nftq_montage ?? 4, 8, t.menge_m),
+    getNFTQStatus(t.nftq_p, bl.nftq_pb ?? 8.5, 12, t.menge_p),
+  ].filter(x => x !== null);
 }
 
 function getStatus(value, baseline) {
@@ -344,14 +384,15 @@ function techWorst(t, baselines) {
   const bl = String(t.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
   const s = [];
   if (t.a1 != null || t.a_ges != null || t.a0 != null) s.push(getOTStatus(t));
-  const nf = [t.nftq_b, t.nftq_s, t.nftq_m, t.nftq_p].filter(v => v != null);
-  if (nf.length) s.push(nf.some(v => v > 8) ? "kritisch" : nf.some(v => v > 4) ? "warnung" : "gut");
+  nftqStatusListe(t, bl).forEach(x => s.push(x));
   if (t.cc_rate != null) s.push(getStatus(t.cc_rate, bl.cc_rate));
   if (t.termintreue != null) s.push(getStatus(t.termintreue, bl.termintreue));
   if (t.loesungsquote != null) s.push(getStatus(t.loesungsquote, bl.loesungsquote));
-  if (t.nps != null) s.push(getNPSStatus(t.nps, bl.nps ?? 67));
-  if (t.nps_montage != null) s.push(getNPSStatus(t.nps_montage, bl.nps_montage ?? 67));
-  if (t.nps_pb != null) s.push(getNPSStatus(t.nps_pb, bl.nps_pb ?? 67));
+  // NPS Schalten (Feld "nps") wird NICHT bewertet: dafuer gibt es in der
+  // Gesamtsicht Qualitaet keinen Zielwert. Adil Kheder stand deswegen mit
+  // -100 aus EINER Bewertung als kritisch da, waehrend sein NPS PB 100 war.
+  if (t.nps_montage != null) s.push(getNPSStatus(t.nps_montage, bl.nps_montage ?? 68, t.anzahl_nps_montage));
+  if (t.nps_pb != null) s.push(getNPSStatus(t.nps_pb, bl.nps_pb ?? 68, t.anzahl_nps_pb));
   return s.includes("kritisch") ? "kritisch" : s.includes("warnung") ? "warnung" : "gut";
 }
 
@@ -1189,7 +1230,10 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
         const merged = {};
         const felder = ["cc_rate", "termintreue", "loesungsquote", "nps", "sterne", "infoquote_p",
           "geplatzte_termine", "anzahl_nps", "a_ges", "a1", "a2", "a2plus", "ax", "a0", "tage",
-          "nftq_b", "nftq_s", "nftq_m", "nftq_p", "menge_b", "menge_s", "menge_m", "menge_p"];
+          "nftq_b", "nftq_s", "nftq_m", "nftq_p", "menge_b", "menge_s", "menge_m", "menge_p",
+          // Ohne die zwei greifen die Mindestmengen in der Ansicht "alle" nicht:
+          // die Felder wurden eingelesen, aber beim Zusammenfuehren weggelassen.
+          "nps_montage", "nps_pb", "anzahl_nps_montage", "anzahl_nps_pb"];
         Object.values(gespeichert).flat().forEach(t => {
           const key = t.name + "#" + String(t.standort);
           if (!merged[key]) merged[key] = { name: t.name, standort: t.standort, quelle: "alle", auftraege: 0, standortUnbekannt: t.standortUnbekannt };
@@ -1215,18 +1259,22 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
       if (t.cc_rate !== null) sl.push(getStatus(t.cc_rate, bl.cc_rate));
       if (t.termintreue !== null) sl.push(getStatus(t.termintreue, bl.termintreue));
       if (t.loesungsquote !== null) sl.push(getStatus(t.loesungsquote, bl.loesungsquote));
-      if (t.nps !== null) sl.push(getNPSStatus(t.nps));
-      if (t.nps_montage != null) sl.push(getNPSStatus(t.nps_montage));
-      if (t.nps_pb != null) sl.push(getNPSStatus(t.nps_pb));
+      // NPS Schalten (t.nps) bleibt hier bewusst aussen vor - kein Zielwert.
+      if (t.nps_montage != null) sl.push(getNPSStatus(t.nps_montage, bl.nps_montage ?? 68, t.anzahl_nps_montage));
+      if (t.nps_pb != null) sl.push(getNPSStatus(t.nps_pb, bl.nps_pb ?? 68, t.anzahl_nps_pb));
       if (t.a1 !== null) sl.push(t.a1 >= 60 ? "gut" : t.a1 >= 45 ? "warnung" : "kritisch");
       if (t.a0 !== null && t.a0 > 10) sl.push("kritisch");
-      if (t.nftq_b !== null) sl.push(t.nftq_b <= 4 ? "gut" : t.nftq_b <= 8 ? "warnung" : "kritisch");
-      if (t.nftq_s !== null) sl.push(t.nftq_s <= 4 ? "gut" : t.nftq_s <= 8 ? "warnung" : "kritisch");
-      if (t.nftq_m !== null) sl.push(t.nftq_m <= 4 ? "gut" : t.nftq_m <= 8 ? "warnung" : "kritisch");
-      if (t.nftq_p !== null) sl.push(t.nftq_p <= 4 ? "gut" : t.nftq_p <= 8 ? "warnung" : "kritisch");
-      const worst = sl.length === 0 ? "gut" : sl.includes("kritisch") ? "kritisch" : sl.includes("warnung") ? "warnung" : "gut";
-      const lob = t.nps !== null && t.nps >= 50
-        ? "Sehr gut! NPS " + Math.round(t.nps) + " weit ueber Zielwert 50."
+      // Dieselbe Rechnung wie in techWorst - EINE Stelle, sonst laufen die zwei
+      // Ansichten des Agenten frueher oder spaeter auseinander.
+      nftqStatusListe(t, bl).forEach(x => sl.push(x));
+      // null heisst "nicht bewertet" (kein Zielwert oder zu wenig Daten) und
+      // darf nicht als "gut" durchgehen.
+      const bewertet = sl.filter(x => x !== null && x !== undefined);
+      const worst = bewertet.length === 0 ? "gut" : bewertet.includes("kritisch") ? "kritisch" : bewertet.includes("warnung") ? "warnung" : "gut";
+      // Frueher stand hier "weit ueber Zielwert 50" - ein dritter, erfundener
+      // NPS-Zielwert neben den 68 aus dem Portal und den 20 in getNPSStatus.
+      const lob = t.nps_pb !== null && t.nps_pb !== undefined && t.nps_pb >= (bl.nps_pb ?? 68)
+        ? "Sehr gut! NPS Problembehebung " + Math.round(t.nps_pb) + " ueber Zielwert " + (bl.nps_pb ?? 68) + "."
         : t.cc_rate !== null && t.cc_rate >= 96
         ? "Sehr gute CC-Rate " + t.cc_rate.toFixed(1) + "% - Zielwert erreicht!"
         : t.nftq_b !== null && worst === "gut"
@@ -1342,23 +1390,26 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
         if (v(t.cc_rate) && bl.cc_rate) statusList.push(getStatus(t.cc_rate, bl.cc_rate));
         if (v(t.termintreue) && bl.termintreue) statusList.push(getStatus(t.termintreue, bl.termintreue));
         if (v(t.loesungsquote) && bl.loesungsquote) statusList.push(getStatus(t.loesungsquote, bl.loesungsquote));
-        if (v(t.nps)) statusList.push(getNPSStatus(t.nps));
-        if (v(t.nps_montage)) statusList.push(getNPSStatus(t.nps_montage));
-        if (v(t.nps_pb)) statusList.push(getNPSStatus(t.nps_pb));
+        // NPS Schalten (t.nps) bleibt aussen vor - kein Portal-Zielwert.
+        if (v(t.nps_montage)) statusList.push(getNPSStatus(t.nps_montage, bl.nps_montage ?? 68, t.anzahl_nps_montage));
+        if (v(t.nps_pb)) statusList.push(getNPSStatus(t.nps_pb, bl.nps_pb ?? 68, t.anzahl_nps_pb));
         if (v(t.a1)) statusList.push(t.a1 >= 60 ? "gut" : t.a1 >= 45 ? "warnung" : "kritisch");
         if (v(t.a0) && t.a0 > 10) statusList.push("kritisch");
-        if (v(t.nftq_b)) statusList.push(t.nftq_b <= 4 ? "gut" : t.nftq_b <= 8 ? "warnung" : "kritisch");   // Bereitstellung: Ziel 4%
-        if (v(t.nftq_s)) statusList.push(t.nftq_s <= 7 ? "gut" : t.nftq_s <= 10 ? "warnung" : "kritisch");  // Schalten: Ziel 7%
-        if (v(t.nftq_m)) statusList.push(t.nftq_m <= 4 ? "gut" : t.nftq_m <= 8 ? "warnung" : "kritisch");   // Montage: Ziel 4%
-        if (v(t.nftq_p)) statusList.push(t.nftq_p <= 8.7 ? "gut" : t.nftq_p <= 12 ? "warnung" : "kritisch"); // Problembehebung: Ziel 8.7%
-        const worst = statusList.length === 0 ? "gut" : statusList.includes("kritisch") ? "kritisch" : statusList.includes("warnung") ? "warnung" : "gut";
+        // DRITTE Stelle, die frueher selbst gerechnet hat - und mit WIEDER
+        // ANDEREN Schwellen als die zwei oben: Schalten 7 statt 6,6,
+        // Problembehebung 8,7 statt 8,5. Derselbe Agent gab also je nach
+        // Ansicht verschiedene Ampeln aus. Jetzt rechnet nftqStatusListe()
+        // an allen drei Stellen - eine Regel, ein Ergebnis.
+        nftqStatusListe(t, bl).forEach(x => statusList.push(x));
+        const bewertet2 = statusList.filter(x => x !== null && x !== undefined);
+        const worst = bewertet2.length === 0 ? "gut" : bewertet2.includes("kritisch") ? "kritisch" : bewertet2.includes("warnung") ? "warnung" : "gut";
         const nps_val = t.nps !== null ? t.nps : 0;
         const cc_val = t.cc_rate !== null ? t.cc_rate : 0;
         const a1_val = t.a1 !== null ? t.a1 : 0;
         const lob = t.quelle === "nftq" && worst === "gut"
-          ? "Alle NFTQ-Werte im Zielbereich (<=4%) - ausgezeichnete Qualitaetsarbeit!"
-          : t.nps !== null && t.nps >= 50
-          ? "Ausgezeichnet! NPS " + nps_val.toFixed(0) + " ueber Zielwert 50 - Vorbild im Team!"
+          ? "Alle bewerteten NFTQ-Werte im Zielbereich - ausgezeichnete Qualitaetsarbeit!"
+          : v(t.nps_pb) && t.nps_pb >= (bl.nps_pb ?? 68)
+          ? "Ausgezeichnet! NPS Problembehebung " + t.nps_pb.toFixed(0) + " ueber Zielwert " + (bl.nps_pb ?? 68) + " - Vorbild im Team!"
           : t.cc_rate !== null && t.cc_rate >= 96
           ? "Sehr gute CC-Rate " + cc_val.toFixed(1) + "% - Zielwert 96% erreicht!"
           : t.a1 !== null && t.a1 >= 60
