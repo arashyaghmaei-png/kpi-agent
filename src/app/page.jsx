@@ -7,6 +7,11 @@ import html2canvas from "html2canvas";
 
 const BASELINE_KEY = "fibernc_baselines";
 const ARCHIV_KEY = "fibernc_archiv";
+// Die Befunde aus ursachen_bericht.py ([A] im Menue). Eigener Speicher, weil es
+// keine Kennzahlen sind, sondern Kundentexte, NFT-Vermerke und Anrufnachweise -
+// eine Zeile je Befund. Der Agent RECHNET damit nichts; er zeigt sie zu dem
+// Techniker an, dessen Karte man aufmacht.
+const URSACHEN_KEY = "fibernc_ursachen";
 const FIRMA = (typeof window !== "undefined" && localStorage.getItem("firma_name")) || "Vikuline";   // Firmenname - im Agenten ueber den 'Firma'-Knopf aenderbar
 const DEFAULT_BASELINES = {
   gesamt: {
@@ -111,6 +116,10 @@ function isJunkRow(row) {
 
 function detectFormat(headers) {
   const h = headers.map(s => cleanHeader(s).toLowerCase());
+  // Der Ursachenbericht: eine Zeile je Befund, keine Kennzahlen-Tabelle.
+  // Muss VOR allen anderen stehen - er hat auch eine Spalte "Kennzahl", und
+  // die wuerde sonst faelschlich als Standard-Report durchgehen.
+  if (h.includes("einstufung") && h.some(x => x.startsWith("kunde sagt"))) return "ursachen";
   if (h.some(x => x === "a1" || x === "a ges." || x === "a ges" || x === "a0")) return "onetouch";
   if (h.some(x => x.includes("nftq b") || x.includes("nftq s"))) return "nftq";
   if (h.some(x => x.includes("courtesy call") || x.includes("abschluss call"))) return "smsfeedbackschalten";
@@ -183,6 +192,33 @@ function normalizeRows(rawRows) {
   const rawHeaders = Object.keys(filtered[0]);
   const headers = rawHeaders.map(cleanHeader);
   const fmt = detectFormat(headers);
+
+  // Befunde sind keine Techniker: sie werden nicht gemittelt, nicht bewertet
+  // und nicht zusammengefasst - nur weitergereicht. Deshalb hier raus, bevor
+  // die Kennzahlen-Logik darueber laeuft.
+  if (fmt === "ursachen") {
+    const f = (row, name) => {
+      const k = Object.keys(row).find(x => cleanHeader(x).toLowerCase() === name);
+      return k ? String(row[k] ?? "").trim() : "";
+    };
+    return rawRows
+      .filter(row => f(row, "techniker"))
+      .map(row => ({
+        quelle: "ursachen",
+        name: f(row, "techniker"),
+        datum: f(row, "datum"),
+        ats: f(row, "ats"),
+        bereich: f(row, "bereich"),
+        kennzahl: f(row, "kennzahl"),
+        wert: f(row, "wert"),
+        einstufung: f(row, "einstufung"),
+        auftrag: f(row, "auftrag"),
+        kundeSagt: f(row, "kunde sagt"),
+        kundeUeber: f(row, "kunde ueber techniker"),
+        technikerSagt: f(row, "techniker sagt"),
+        weiteres: f(row, "weiteres"),
+      }));
+  }
   if (fmt === "onetouch") return aggregateOneTouch(filtered);
 
   const get = (row, ...keys) => {
@@ -537,7 +573,7 @@ function OTStackedBar({ tech }) {
   );
 }
 
-function TechCard({ tech, baselines, vorperiode }) {
+function TechCard({ tech, baselines, vorperiode, ursachen }) {
   const bl = String(tech.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
   // Bereiche nach Daten-Vorhandensein (so zeigt eine Kombi-Karte alle gleichzeitig)
   const isOT = tech.a1 != null || tech.a_ges != null || tech.a0 != null || tech.quelle === "onetouch";
@@ -546,8 +582,9 @@ function TechCard({ tech, baselines, vorperiode }) {
   const _stat = [];
   if (isOT) _stat.push(getOTStatus(tech));
   if (isNFTQ) {
-    const vals = [tech.nftq_b, tech.nftq_s, tech.nftq_m, tech.nftq_p].filter(v => v !== null && v !== undefined);
-    _stat.push(vals.some(v => v > 8) ? "kritisch" : vals.some(v => v > 4) ? "warnung" : "gut");
+    // VIERTE Stelle, die frueher selbst gerechnet hat - wieder pauschal 4/8 fuer
+    // alle vier Spalten, NFTQ-B eingeschlossen. Jetzt dieselbe Regel wie ueberall.
+    nftqStatusListe(tech, bl).forEach(x => _stat.push(x));
   }
   if (isSMS) {
     if (tech.cc_rate != null) _stat.push(getStatus(tech.cc_rate, bl.cc_rate));
@@ -630,6 +667,72 @@ function TechCard({ tech, baselines, vorperiode }) {
           );
         })}
       </>)}
+      <UrsachenBlock befunde={ursachen} />
+    </div>
+  );
+}
+
+// Der Ursachenbericht in der Technikerkarte: was hinter den Zahlen steht.
+// Die Zahlen sagen, WORUEBER zu reden ist - die Texte sagen, WARUM. Deshalb
+// steht der Block unter den Balken und ist zugeklappt: wer nur den Ueberblick
+// will, wird nicht mit Kundentexten zugeschuettet; wer den Grund sucht, klickt.
+// Hier wird NICHTS gerechnet und NICHTS bewertet - die Einstufung steht schon
+// in der Datei, die ursachen_bericht.py geschrieben hat.
+const URSACHEN_FARBE = {
+  "Detraktor": { rand: "#7f1d1d", bg: "#2e0f0f", text: "#f87171" },
+  "kein erfolgreicher Anruf": { rand: "#78350f", bg: "#2a1a05", text: "#fbbf24" },
+  "NFT": { rand: "#78350f", bg: "#2a1a05", text: "#fb923c" },
+  "Passiv": { rand: "#374151", bg: "#161b26", text: "#9ca3af" },
+  "Promotor": { rand: "#14532d", bg: "#0f2e1a", text: "#4ade80" },
+};
+const URSACHEN_RANG = { "Detraktor": 0, "kein erfolgreicher Anruf": 1, "NFT": 2, "Passiv": 3, "Promotor": 4 };
+
+function UrsachenBlock({ befunde }) {
+  const [offen, setOffen] = useState(false);
+  if (!befunde || !befunde.length) return null;
+  const sortiert = [...befunde].sort(
+    (a, b) => (URSACHEN_RANG[a.einstufung] ?? 9) - (URSACHEN_RANG[b.einstufung] ?? 9));
+  const zaehl = (e) => befunde.filter(b => b.einstufung === e).length;
+  return (
+    <div style={{ marginTop: 14, borderTop: "1px solid #1f2937", paddingTop: 10 }}>
+      <div onClick={() => setOffen(!offen)}
+        style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", flexWrap: "wrap" }}>
+        <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 700 }}>
+          {offen ? "▾" : "▸"} Was dahintersteckt ({befunde.length})
+        </span>
+        {[["Detraktor", "unzufrieden"], ["NFT", "Nachfolgetickets"],
+          ["kein erfolgreicher Anruf", "nicht erreicht"]].map(([e, label]) =>
+          zaehl(e) ? (
+            <span key={e} style={{ fontSize: 10, fontFamily: "monospace", padding: "1px 6px",
+              borderRadius: 3, background: URSACHEN_FARBE[e].bg, color: URSACHEN_FARBE[e].text }}>
+              {zaehl(e)} {label}
+            </span>
+          ) : null)}
+      </div>
+      {offen && sortiert.map((b, i) => {
+        const f = URSACHEN_FARBE[b.einstufung] || URSACHEN_FARBE["Passiv"];
+        return (
+          <div key={i} style={{ marginTop: 8, background: f.bg, borderLeft: `3px solid ${f.rand}`,
+            borderRadius: 4, padding: "8px 10px" }}>
+            <div style={{ fontSize: 10, color: "#6b7280", fontFamily: "monospace" }}>
+              {b.datum}{b.ats ? ` · ATS ${b.ats}` : ""} · {b.bereich}
+              {b.auftrag ? ` · ${b.auftrag}` : ""}
+              {b.wert ? ` · ${b.kennzahl}: ${b.wert}` : ""}
+              <span style={{ color: f.text, fontWeight: 700, marginLeft: 6 }}>{b.einstufung}</span>
+            </div>
+            {[["Kunde", b.kundeSagt], ["Kunde über den Techniker", b.kundeUeber],
+              ["Techniker (Abschlussvermerk)", b.technikerSagt]].map(([wer, txt]) => txt ? (
+              <div key={wer} style={{ marginTop: 6, borderLeft: "2px solid #374151", paddingLeft: 8 }}>
+                <div style={{ fontSize: 9, color: "#4b5563", textTransform: "uppercase", fontWeight: 700 }}>{wer}</div>
+                <div style={{ fontSize: 12, color: "#d1d5db", fontStyle: "italic" }}>{txt}</div>
+              </div>
+            ) : null)}
+            {b.weiteres ? (
+              <div style={{ marginTop: 5, fontSize: 10, color: "#6b7280" }}>{b.weiteres}</div>
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -1053,6 +1156,7 @@ const getTermintreeuPunkte = (prozent) => {
 
 export default function KPIAgent() {
   const [gespeichert, setGespeichert] = useState({});
+  const [ursachen, setUrsachen] = useState([]);
   const [kontakte, setKontakte] = useState({});
   const [baselines, setBaselines] = useState(DEFAULT_BASELINES);
   const [archiv, setArchiv] = useState([]);
@@ -1094,6 +1198,8 @@ export default function KPIAgent() {
       if (savedB) setBaselines(JSON.parse(savedB));
       const savedA = localStorage.getItem(ARCHIV_KEY);
       if (savedA) setArchiv(JSON.parse(savedA));
+      const savedU = localStorage.getItem(URSACHEN_KEY);
+      if (savedU) setUrsachen(JSON.parse(savedU));
     } catch(e) {}
   }, []);
 
@@ -1101,6 +1207,7 @@ export default function KPIAgent() {
   useEffect(() => { try { localStorage.setItem(KONTAKTE_KEY, JSON.stringify(kontakte)); } catch(e) {} }, [kontakte]);
   useEffect(() => { try { localStorage.setItem(BASELINE_KEY, JSON.stringify(baselines)); } catch(e) {} }, [baselines]);
   useEffect(() => { try { localStorage.setItem(ARCHIV_KEY, JSON.stringify(archiv)); } catch(e) {} }, [archiv]);
+  useEffect(() => { try { localStorage.setItem(URSACHEN_KEY, JSON.stringify(ursachen)); } catch(e) {} }, [ursachen]);
 
   useEffect(() => {
     if (!loading && pending) {
@@ -1123,6 +1230,14 @@ export default function KPIAgent() {
 
   const handleRows = useCallback((rows) => {
     if (!rows.length) { setError("Keine Daten gefunden."); return; }
+    // Der Ursachenbericht geht einen eigenen Weg: er ersetzt keine
+    // Kennzahlen-Kategorie und darf die Ansicht nicht umschalten. Er legt sich
+    // neben die Zahlen und taucht in den Technikerkarten auf.
+    if (rows[0] && rows[0].quelle === "ursachen") {
+      setUrsachen(rows);
+      setError("ok " + rows.length + " Befunde geladen - stehen in den Technikerkarten.");
+      return;
+    }
     const quellen = [...new Set(rows.map(r => r.quelle))];
     const quelle = quellen.length === 1 ? quellen[0] : "standard";
     if (loading) {
@@ -1772,7 +1887,8 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
                 <div style={{ marginBottom: 16 }}>{angezeigt.filter(t => !nurKritisch || techWorst(t, baselines) === "kritisch").map((t, i) => {
                   const vorTechs = archiv.length > 0 ? Object.values(archiv[archiv.length-1].daten).flat() : [];
                   const vorperiode = vorTechs.find(v => v.name === t.name) || null;
-                  return <TechCard key={i} tech={t} baselines={baselines} vorperiode={vorperiode} />;
+                  return <TechCard key={i} tech={t} baselines={baselines} vorperiode={vorperiode}
+                    ursachen={(ursachen || []).filter(u => u.name === t.name)} />;
                 })}</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <button onClick={runAnalysis} disabled={loading}
