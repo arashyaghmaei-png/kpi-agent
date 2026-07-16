@@ -750,46 +750,109 @@ function UrsachenBlock({ befunde }) {
 // Mail wird getrennt vorbereitet, und der Anhang kommt per Hand dran. Zwei
 // Klicks statt keiner - aber ehrlich.
 // ---------------------------------------------------------------------------
-function berichtText(name, meine, tech, bl, firma) {
-  // Der Mailtext wird aus den ECHTEN Befunden gebaut, nicht aus Textbausteinen.
-  // "Sofortgespraech mit der Leitstelle" sagt einem Monteur nichts. "Auftrag
-  // 200097251077 am 09.07., Kunde schreibt: Mehrere Anlaeufe" sagt ihm alles.
+function berichtText(name, meine, tech, bl) {
+  // Der GANZE Bericht als Text - nicht ein Anschreiben mit Anhang.
+  // Grund (Arash, 16.07.): "mach das bericht als mail fertig wenn man nichts
+  // anhaengen darf". Ein Browser kann keine Datei an eine Mail haengen, also
+  // wandert der Inhalt in die Mail statt daneben.
+  //
+  // Gebaut aus den ECHTEN Befunden, nicht aus Textbausteinen: "Sofortgespraech
+  // mit der Leitstelle" sagt einem Monteur nichts, "Auftrag 200097480208 am
+  // 10.07., der Router kam nicht" sagt ihm alles.
   const detr = meine.filter(b => b.einstufung === "Detraktor");
   const nft = meine.filter(b => b.einstufung === "NFT");
   const ohne = meine.filter(b => b.einstufung === "kein erfolgreicher Anruf");
   const gut = meine.filter(b => b.einstufung === "Promotor");
+  const ats = [...new Set(meine.map(b => b.ats).filter(Boolean))].join(", ");
   const z = [];
+  const trenner = "-".repeat(58);
+
   z.push(`Hallo ${name.split(" ")[0]},`);
   z.push("");
-  z.push("hier deine Rueckmeldung aus dem Auftragsinfo-Portal.");
+  z.push("hier deine Rueckmeldung aus dem Auftragsinfo-Portal der Telekom.");
+  z.push("Ich schicke dir alles, was zu deinen Auftraegen zurueckgekommen ist -");
+  z.push("das Gute und das, worueber wir reden sollten.");
   z.push("");
-  if (gut.length) {
-    z.push(`GUT GELAUFEN: ${gut.length} Kunden haben dich mit 9 oder 10 bewertet.`);
-    const mit = gut.filter(b => b.kundeSagt || b.kundeUeber).slice(0, 2);
-    mit.forEach(b => z.push(`   ${b.datum}: "${(b.kundeSagt || b.kundeUeber).slice(0, 120)}"`));
-    z.push("");
+
+  // Kennzahlen mit Ampel - dieselbe Regel wie ueberall im Agenten. Ohne die
+  // Zahlen fehlt der Mail der Anlass; ohne die Texte weiter unten fehlt ihr
+  // der Grund. Beides gehoert in eine Mail.
+  if (tech && bl) {
+    const zeilen = [];
+    const wort = { gut: "im Ziel", warnung: "Warnung", kritisch: "kritisch" };
+    const f = (v) => (v === null || v === undefined || isNaN(v)) ? null : v.toFixed(1).replace(".", ",");
+    const nimm = (label, wert, status, basis) => {
+      if (wert === null) return;
+      zeilen.push(`   ${label.padEnd(24)} ${String(wert).padStart(7)}` +
+        (status ? `   ${wort[status]}` : "   (kein Zielwert / zu wenig Daten)") +
+        (basis ? `   [Basis: ${basis}]` : ""));
+    };
+    nimm("Termintreue", f(tech.termintreue), tech.termintreue != null ? getStatus(tech.termintreue, bl.termintreue) : null);
+    nimm("Courtesy Call", f(tech.cc_rate), tech.cc_rate != null ? getStatus(tech.cc_rate, bl.cc_rate) : null);
+    nimm("NPS Problembehebung", f(tech.nps_pb), getNPSStatus(tech.nps_pb, bl.nps_pb ?? 68, tech.anzahl_nps_pb), tech.anzahl_nps_pb);
+    nimm("NPS Montage", f(tech.nps_montage), getNPSStatus(tech.nps_montage, bl.nps_montage ?? 68, tech.anzahl_nps_montage), tech.anzahl_nps_montage);
+    nimm("NFTQ Montage %", f(tech.nftq_m), getNFTQStatus(tech.nftq_m, bl.nftq_montage ?? 4, 8, tech.menge_m), tech.menge_m);
+    nimm("NFTQ Schalten %", f(tech.nftq_s), getNFTQStatus(tech.nftq_s, bl.nftq_schalten ?? 6.6, 10, tech.menge_s), tech.menge_s);
+    nimm("NFTQ Problembeh. %", f(tech.nftq_p), getNFTQStatus(tech.nftq_p, bl.nftq_pb ?? 8.5, 12, tech.menge_p), tech.menge_p);
+    if (zeilen.length) {
+      z.push(`DEINE ZAHLEN${ats ? ` (ATS ${ats})` : ""}`);
+      z.push(trenner);
+      zeilen.forEach(x => z.push(x));
+      z.push("");
+      z.push("   Wo kein Urteil steht, gibt es entweder keinen Telekom-Zielwert");
+      z.push("   oder zu wenige Faelle, um daraus etwas abzulesen.");
+      z.push("");
+    }
   }
-  if (detr.length) {
-    z.push(`UNZUFRIEDENE KUNDEN: ${detr.length}`);
-    detr.forEach(b => {
-      z.push(`   ${b.datum}, Auftrag ${b.auftrag} (Bewertung ${b.wert} von 10)`);
-      if (b.kundeSagt) z.push(`      Kunde: "${b.kundeSagt.slice(0, 200)}"`);
-      if (b.weiteres) z.push(`      ${b.weiteres}`);
+
+  if (gut.length) {
+    z.push(`GUT GELAUFEN - ${gut.length} Kunden haben dich mit 9 oder 10 bewertet`);
+    z.push(trenner);
+    gut.forEach(b => {
+      const t = b.kundeUeber || b.kundeSagt;
+      z.push(`   ${b.datum}${t ? `: "${t}"` : ""}`);
     });
     z.push("");
   }
+
+  if (detr.length) {
+    z.push(`UNZUFRIEDENE KUNDEN - ${detr.length}`);
+    z.push(trenner);
+    detr.forEach(b => {
+      z.push(`   ${b.datum} | Auftrag ${b.auftrag} | Bewertung ${b.wert} von 10`);
+      if (b.kundeSagt) z.push(`      Kunde: "${b.kundeSagt}"`);
+      if (b.kundeUeber) z.push(`      Kunde ueber dich: "${b.kundeUeber}"`);
+      if (b.weiteres) z.push(`      ${b.weiteres}`);
+      z.push("");
+    });
+  }
+
   if (nft.length) {
-    z.push(`NACHFOLGETICKETS: ${nft.length}`);
-    nft.forEach(b => z.push(`   ${b.datum}, Auftrag ${b.auftrag} (${b.kennzahl})`));
+    z.push(`NACHFOLGETICKETS - ${nft.length}`);
+    z.push(trenner);
+    z.push("   Auftraege, bei denen nochmal jemand raus musste.");
     z.push("");
+    nft.forEach(b => {
+      z.push(`   ${b.datum} | Auftrag ${b.auftrag}`);
+      if (b.technikerSagt) z.push(`      Dein Abschlussvermerk: "${b.technikerSagt}"`);
+      if (b.weiteres) z.push(`      ${b.weiteres}`);
+      z.push("");
+    });
   }
+
   if (ohne.length) {
-    z.push(`AUFTRAEGE OHNE ERFOLGREICHEN ANRUF: ${ohne.length}`);
-    ohne.slice(0, 5).forEach(b => z.push(`   ${b.datum}, Auftrag ${b.auftrag} - ${b.wert}`));
+    z.push(`AUFTRAEGE OHNE ERFOLGREICHEN ANRUF - ${ohne.length}`);
+    z.push(trenner);
+    ohne.forEach(b => z.push(`   ${b.datum} | Auftrag ${b.auftrag} | ${b.wert}`));
     z.push("");
   }
+
+  z.push(trenner);
   z.push("Lass uns kurz drueber sprechen - besonders ueber die Faelle, bei denen");
-  z.push("du selbst siehst, dass es nicht an dir lag. Die will ich wissen.");
+  z.push("du selbst siehst, dass es nicht an dir lag. Die will ich wissen:");
+  z.push("nicht gelieferte Router und Nachfolgeauftraege, die die Telekom selbst");
+  z.push("erledigt hat, zaehlen trotzdem gegen dich. Das aendere ich nur, wenn");
+  z.push("ich es weiss.");
   z.push("");
   z.push("Viele Gruesse");
   return z.join("\n");
@@ -799,6 +862,7 @@ function BerichtTab({ ursachen, techs, baselines, kontakte }) {
   const namen = [...new Set((ursachen || []).map(u => u.name))].sort();
   const [gewaehlt, setGewaehlt] = useState(namen[0] || "");
   const [mailOffen, setMailOffen] = useState(false);
+  const [kopiert, setKopiert] = useState(false);
   if (!namen.length) {
     return (
       <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8, padding: 24, textAlign: "center" }}>
@@ -822,7 +886,13 @@ function BerichtTab({ ursachen, techs, baselines, kontakte }) {
   const ats = [...new Set(meine.map(b => b.ats).filter(Boolean))].join(", ");
   const text = berichtText(name, meine, tech, bl);
   const kontakt = (kontakte || {})[name] || {};
-  const mailto = `mailto:${kontakt.email || ""}?subject=${encodeURIComponent("Rueckmeldung zu deinen Auftraegen")}&body=${encodeURIComponent(text)}`;
+  const betreff = `Rueckmeldung zu deinen Auftraegen${ats ? ` (ATS ${ats})` : ""}`;
+  const mailto = `mailto:${kontakt.email || ""}?subject=${encodeURIComponent(betreff)}&body=${encodeURIComponent(text)}`;
+  // mailto: geht als Adresse ans Mailprogramm - und Adressen sind begrenzt.
+  // Outlook schneidet bei rund 2000 Zeichen ab, ANDERE MELDEN DAS NICHT: die
+  // Mail geht mitten im Satz zu Ende und niemand merkt es. Deshalb wird hier
+  // gerechnet statt gehofft; ist es zu lang, ist Kopieren der ehrliche Weg.
+  const zuLang = mailto.length > 1900;
 
   return (
     <div>
@@ -846,29 +916,44 @@ function BerichtTab({ ursachen, techs, baselines, kontakte }) {
           style={{ background: "#1e3a5f", color: "#dbeafe", border: "1px solid #2563eb", borderRadius: 6, padding: "7px 12px", fontSize: 12, cursor: "pointer" }}>
           Mail vorbereiten
         </button>
-        <span style={{ fontSize: 10, color: "#6b7280" }}>
-          PDF: erst "Als PDF" speichern, dann in der Mail von Hand anhaengen - ein Browser darf das nicht selbst.
+        <span style={{ fontSize: 10, color: "#6b7280", maxWidth: 420, lineHeight: 1.4 }}>
+          Die Mail enthaelt den ganzen Bericht als Text - kein Anhang noetig.
+          "Als PDF" ist fuer die Ablage oder wenn du das Blatt ausgedruckt mitnehmen willst.
         </span>
       </div>
 
       {mailOffen && (
         <div className="nicht-drucken" style={{ marginBottom: 14, background: "#0f1729", border: "1px solid #1e3a5f", borderRadius: 8, padding: 14 }}>
-          <div style={{ fontSize: 11, color: "#93c5fd", fontWeight: 700, marginBottom: 6 }}>
-            Massnahme und Feedback fuer {name}
+          <div style={{ fontSize: 11, color: "#93c5fd", fontWeight: 700, marginBottom: 2 }}>
+            Der ganze Bericht als Mail an {name}
           </div>
-          <textarea readOnly value={text} rows={14}
+          <div style={{ fontSize: 10, color: "#6b7280", marginBottom: 6 }}>
+            Nichts anzuhaengen: Zahlen, Ampel und Kundentexte stehen in der Mail selbst.
+          </div>
+          <textarea readOnly value={text} rows={18}
             style={{ width: "100%", background: "#111827", color: "#d1d5db", border: "1px solid #374151",
               borderRadius: 6, padding: 10, fontSize: 11, fontFamily: "monospace", lineHeight: 1.5 }} />
           <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <a href={mailto} style={{ background: "#2563eb", color: "#fff", borderRadius: 6, padding: "7px 12px",
-              fontSize: 12, textDecoration: "none" }}>In Mailprogramm oeffnen</a>
-            <button onClick={() => navigator.clipboard && navigator.clipboard.writeText(text)}
-              style={{ background: "#1f2937", color: "#f9fafb", border: "1px solid #374151", borderRadius: 6, padding: "7px 12px", fontSize: 12, cursor: "pointer" }}>
-              Text kopieren
+            <button onClick={() => { navigator.clipboard && navigator.clipboard.writeText(text); setKopiert(true); setTimeout(() => setKopiert(false), 2000); }}
+              style={{ background: zuLang ? "#2563eb" : "#1f2937", color: zuLang ? "#fff" : "#f9fafb",
+                border: zuLang ? "none" : "1px solid #374151", borderRadius: 6, padding: "7px 12px", fontSize: 12, cursor: "pointer", fontWeight: zuLang ? 600 : 400 }}>
+              {kopiert ? "kopiert" : "Ganzen Bericht kopieren"}
             </button>
+            <a href={mailto} style={{ background: zuLang ? "#1f2937" : "#2563eb", color: zuLang ? "#9ca3af" : "#fff",
+              border: zuLang ? "1px solid #374151" : "none", borderRadius: 6, padding: "7px 12px",
+              fontSize: 12, textDecoration: "none" }}>In Mailprogramm oeffnen</a>
+            {zuLang ? (
+              <span style={{ fontSize: 10, color: "#fbbf24", maxWidth: 380, lineHeight: 1.4 }}>
+                Der Bericht ist {text.length} Zeichen lang. Manche Mailprogramme schneiden
+                ihn beim direkten Oeffnen ab, ohne es zu sagen. Sicherer: kopieren und
+                in eine leere Mail einfuegen.
+              </span>
+            ) : (
+              <span style={{ fontSize: 10, color: "#6b7280" }}>{text.length} Zeichen - passt.</span>
+            )}
             {!kontakt.email && (
               <span style={{ fontSize: 10, color: "#fbbf24" }}>
-                Keine Mailadresse hinterlegt - die Mail geht ohne Empfaenger auf. Adressen: Knopf "Kontakte".
+                Keine Mailadresse hinterlegt (Knopf "Kontakte").
               </span>
             )}
           </div>
