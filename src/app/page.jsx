@@ -1700,6 +1700,7 @@ export default function KPIAgent() {
     if (rows[0] && rows[0].quelle === "ursachen") {
       setUrsachen(rows);
       setError("ok " + rows.length + " Befunde geladen - Reiter \"Berichte\" und unten in jeder Technikerkarte.");
+      if (!Object.keys(gespeichert).length) setActiveTab("berichte");
       return;
     }
     const quellen = [...new Set(rows.map(r => r.quelle))];
@@ -1713,7 +1714,7 @@ export default function KPIAgent() {
       setAiAnalysis(""); setMassnahmen([]); setMassnahmenFehler(null); setTechBewertungen({});
       setActiveTab("dashboard"); setError("");
     }
-  }, [loading]);
+  }, [loading, gespeichert]);
 
   const processXLSX = useCallback(async (file) => {
     try {
@@ -2332,7 +2333,11 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
       </div>
 
       <div ref={dashboardRef} style={{ maxWidth: 720, margin: "0 auto", padding: "24px 20px" }}>
-        {!hatDaten && (
+        {/* Frueher stand hier nur !hatDaten - also "keine Kennzahlen". Damit hat
+            dieser Bildschirm auch die Berichte verdeckt, obwohl die geladen waren:
+            Arash hatte 67 Befunde drin und sah trotzdem ueberall "hochladen".
+            Der Ursachenbericht braucht die Kennzahlen aber gar nicht. */}
+        {!hatDaten && ursachen.length === 0 && (
           <div style={{ textAlign: "center", padding: "60px 20px" }}>
             <div style={{ fontSize: 36, marginBottom: 12 }}></div>
             <div style={{ fontSize: 18, fontWeight: 700, color: "#f9fafb", marginBottom: 8 }}>Telekom-Export hochladen</div>
@@ -2345,7 +2350,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
           </div>
         )}
 
-        {hatDaten && angezeigt.length === 0 && (
+        {hatDaten && angezeigt.length === 0 && ursachen.length === 0 && (
           <div style={{ textAlign: "center", padding: "40px 20px" }}>
             <div style={{ fontSize: 14, color: "#6b7280", marginBottom: 16 }}>Noch keine Daten für "{KATEGORIEN.find(k => k.id === aktiveKategorie)?.label}"</div>
             <label style={{ display: "inline-block", background: "#1d4ed8", color: "#fff", padding: "10px 24px", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
@@ -2355,7 +2360,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
           </div>
         )}
 
-        {angezeigt.length > 0 && (
+        {(angezeigt.length > 0 || ursachen.length > 0) && (
           <>
             {pending && <div style={{ fontSize: 11, color: "#4ade80", marginBottom: 8 }}>... Nächste Datei bereit</div>}
             {error && <div style={{ fontSize: 11, color: "#4ade80", marginBottom: 8 }}>{error}</div>}
