@@ -2275,9 +2275,29 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
                 bleibt. Deshalb kein Knopf, sondern ein Merkzettel. */}
             {ursachen.length > 0 && (
               <span title="Ursachenbericht geladen - steht im Reiter Berichte und in den Technikerkarten"
-                style={{ padding: "3px 10px", borderRadius: 5, fontSize: 11,
-                  background: "#0f2e1a", color: "#4ade80", border: "1px solid #14532d" }}>
+                style={{ padding: "3px 4px 3px 10px", borderRadius: 5, fontSize: 11,
+                  background: "#0f2e1a", color: "#4ade80", border: "1px solid #14532d",
+                  display: "inline-flex", alignItems: "center", gap: 6 }}>
                 Ursachen ({new Set(ursachen.map(u => u.name)).size} Techniker, {ursachen.length} Befunde)
+                {/* Loeschen muss gehen wie bei jeder Kategorie - und hier
+                    besonders: das sind Kundentexte im Klartext. Telekom schreibt
+                    vor, sie zu loeschen, sobald der Zweck erfuellt ist. Nach dem
+                    Gespraech mit dem Techniker also weg. Ohne diesen Knopf
+                    blieben sie im Browser liegen. */}
+                <button onClick={() => {
+                  if (window.confirm("Ursachenbericht aus dem Agenten entfernen?\n\n" +
+                    ursachen.length + " Befunde mit Kundentexten. Die Datei auf deinem " +
+                    "Rechner bleibt - hier im Browser ist sie dann weg.")) {
+                    setUrsachen([]);
+                    setError("Ursachenbericht entfernt.");
+                    if (activeTab === "berichte") setActiveTab("dashboard");
+                  }
+                }}
+                  title="Ursachenbericht entfernen - Kundentexte gehoeren nach dem Gespraech geloescht"
+                  style={{ background: "none", border: "none", color: "#4ade80", cursor: "pointer",
+                    fontSize: 13, lineHeight: 1, padding: "0 4px", opacity: 0.6 }}>
+                  ×
+                </button>
               </span>
             )}
           </div>
