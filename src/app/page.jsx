@@ -65,26 +65,49 @@ KW20 schlechteste Woche (NPS 26, Termintreue 85,7%). KW23-24 FS5336 kritisch: CC
 OneTouch: A1=erster Besuch erledigt (Ziel >=60%), AX=Abbruch, A0=nicht erledigt (kritisch >10%).
 Aufgabe: Techniker-KPIs bewerten, Leitstellen-Empfehlungen. Wenn Vorperioden-Daten vorhanden, Trend je Techniker angeben.
 
-Telekom-Zielwerte (alle verbindlich):
+Telekom-Zielwerte. Quelle: Portal > Gesamtsicht Qualitaet, dort steht bei jedem
+Diagramm die Zielwertmarkierung "ZW". NICHTS DAVON SCHAETZEN oder ergaenzen.
+Diese Werte MUESSEN mit der Excel-Auswertung (kpi_uebersicht.py) uebereinstimmen -
+wenn Analyse und Excel verschiedene Ampeln zeigen, ist das schlimmer als gar keine.
+
 SMS-Feedback/Schalten:
-- Courtesy Calls (CC-Rate): Ziel >= 95%, Warnung < 95%, Kritisch < 85%
-- Termintreue: Ziel >= 96%, Warnung < 96%, Kritisch < 85%
+- Courtesy Calls (CC-Rate): Ziel >= 95%, Warnung >= 85.5%, Kritisch < 85.5%
+- Termintreue: Ziel >= 96%, Warnung >= 86.4%, Kritisch < 86.4%
 - Loesungsquote: Ziel >= 95%
-- NPS Montage/Bereitstellung: Ziel >= 67, Warnung 20-66, Kritisch < 20
-- NPS Problembehebung: Ziel >= 67
+- NPS Montage (Report-Spalte "NPS BS"): Ziel >= 68, Warnung >= 40, Kritisch < 40
+- NPS Problembehebung ("NPS PB"): Ziel >= 68, Warnung >= 40, Kritisch < 40
+- NPS SCHALTEN: NICHT BEWERTEN. Dafuer gibt es in der Gesamtsicht Qualitaet
+  keinen Zielwert. Wert nennen, kein Urteil, keine Ampel.
 - Informationsquote PB: Ziel >= 87.5%
 - Geplatzte Termine: Ziel <= 0.6%, Kritisch > 2%
-- SO-Quote: Ziel <= 2%, Kritisch > 4%
-- Service Calls Carrier: Ziel >= 93%
-NFTQ:
-- NFTQ Bereitstellung: Ziel <= 4%, Warnung 4-8%, Kritisch > 8%
-- NFTQ Schalten: Ziel <= 7%, Warnung 7-10%, Kritisch > 10%
-- NFTQ Montage: Ziel <= 4%, Warnung 4-8%, Kritisch > 8%
-- NFTQ Problembehebung: Ziel <= 8.7%, Kritisch > 12%
-OneTouch:
+
+NFTQ (Fehlerquote - NIEDRIGER ist besser). "NFT" = Nachfolgeticket: ein Auftrag,
+bei dem nochmal jemand raus musste. Schreibe das Wort aus, nicht abkuerzen.
+- NFTQ Montage: Ziel <= 4%, Warnung <= 8%, Kritisch > 8%
+- NFTQ Schalten: Ziel <= 6.6%, Warnung <= 10%, Kritisch > 10%
+- NFTQ Problembehebung: Ziel <= 8.5%, Warnung <= 12%, Kritisch > 12%
+- NFTQ BEREITSTELLUNG: NICHT BEWERTEN. Bereitstellung = Schalten + Montage,
+  ist also nur die Sammelquote der beiden. Wer sie mitzaehlt, zaehlt dieselben
+  Nachfolgetickets zweimal und der Techniker sieht doppelt so schlecht aus,
+  wie er ist. Telekom hat dafuer folgerichtig auch keinen Zielwert.
+
+MINDESTMENGEN (Vikuline-Regel, keine Telekom-Vorgabe - so aber sagen):
+- NFTQ erst ab 10 Auftraegen in DER Kategorie bewerten. Darunter Wert nennen,
+  kein Urteil: bei 3 Schalten-Auftraegen sind 33,3% EIN Nachfolgeticket - das
+  misst den Zufall, nicht die Arbeit.
+- NPS erst ab 2 Rueckmeldungen bewerten. Bei einer ist der Wert nur +100 oder -100.
+- NENNE BEI JEDER QUOTE DIE BASIS: "NFTQ Montage 22,2% (4 von 18)", nicht nur
+  "22,2%". Eine Quote ohne ihre Basis ist im Gespraech mit dem Monteur wertlos.
+- Bei einem Extremwert aus wenigen Faellen: sag ausdruecklich, dass er auf
+  wenigen Faellen beruht, statt ihn als Befund zu verkaufen.
+
+OneTouch (im Agenten hinterlegt; ob Telekom dafuer ZW vorgibt, ist UNGEPRUEFT -
+also nicht als Telekom-Vorgabe darstellen):
 - A1-Quote: Ziel >= 60%, Warnung 45-59%, Kritisch < 45%
 - A0-Quote: Ziel <= 5%, Kritisch > 10%
-Antworte auf Deutsch, direkt und operativ.
+
+Antworte auf Deutsch, direkt und operativ. Erfinde keine Zielwerte fuer
+Kennzahlen, die oben nicht stehen - schreibe dann "kein Zielwert bekannt".
 
 PFLICHT - IMMER AM ENDE - JEDEN TECHNIKER AUFLISTEN - AUCH GUTE:
 <MASSNAHMEN>
@@ -1519,7 +1542,7 @@ export default function KPIAgent() {
     // neben die Zahlen und taucht in den Technikerkarten auf.
     if (rows[0] && rows[0].quelle === "ursachen") {
       setUrsachen(rows);
-      setError("ok " + rows.length + " Befunde geladen - stehen in den Technikerkarten.");
+      setError("ok " + rows.length + " Befunde geladen - Reiter \"Berichte\" und unten in jeder Technikerkarte.");
       return;
     }
     const quellen = [...new Set(rows.map(r => r.quelle))];
@@ -2068,6 +2091,19 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
                 </button>
               );
             })}
+            {/* Der Ursachenbericht ist KEINE Kennzahlen-Kategorie - man kann ihn
+                nicht "ansehen" wie SMS-Feedback, er steht in den Technikerkarten
+                und im Reiter "Berichte". Trotzdem gehoert er hierher: Arash hat
+                zweimal gefragt, ob die Datei ueberhaupt drin ist. Die Meldung
+                beim Hochladen ist weg, sobald man woanders hinklickt - das hier
+                bleibt. Deshalb kein Knopf, sondern ein Merkzettel. */}
+            {ursachen.length > 0 && (
+              <span title="Ursachenbericht geladen - steht im Reiter Berichte und in den Technikerkarten"
+                style={{ padding: "3px 10px", borderRadius: 5, fontSize: 11,
+                  background: "#0f2e1a", color: "#4ade80", border: "1px solid #14532d" }}>
+                Ursachen ({new Set(ursachen.map(u => u.name)).size} Techniker, {ursachen.length} Befunde)
+              </span>
+            )}
           </div>
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
