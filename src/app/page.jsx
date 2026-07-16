@@ -12,6 +12,90 @@ const ARCHIV_KEY = "fibernc_archiv";
 // eine Zeile je Befund. Der Agent RECHNET damit nichts; er zeigt sie zu dem
 // Techniker an, dessen Karte man aufmacht.
 const URSACHEN_KEY = "fibernc_ursachen";
+
+// ---------------------------------------------------------------------------
+// ORDNER VERBINDEN
+// Arash musste bisher jede CSV einzeln suchen und hochladen - fuenf Stueck,
+// verteilt auf zwei Ordner (Reports in <KW>\, Ursachen in Pipeline\). Mit der
+// File System Access API waehlt er EINMAL den Ordner Auftragsinfo_Downloads
+// aus, und der Agent holt sich alles selbst.
+//
+// WARUM NICHT ANDERSHERUM (Vikuline OS schickt hoch): Dann laegen
+// Telekom-Kundentexte auf einem Server. Heute liegen sie nur in seinem
+// Browser. Diese Frage haengt bei Thomas (Geschaeftsfuehrer) und ist nicht
+// meine, sie durch eine Bauentscheidung zu beantworten. Hier liest der
+// Browser lokal - die Daten verlassen den Rechner nicht.
+//
+// NUR CHROME/EDGE. Firefox und Safari koennen das nicht - deshalb erscheint
+// der Knopf dort gar nicht erst und der Upload bleibt, wie er war.
+// ---------------------------------------------------------------------------
+const ORDNER_DB = "fibernc_ordner";
+
+// Der Ordner-Zugriff wird als "Handle" gemerkt - der passt in kein
+// localStorage (nur Text), deshalb IndexedDB. Ohne das muesste Arash den
+// Ordner nach jedem Neuladen wieder heraussuchen.
+function ordnerMerken(handle) {
+  return new Promise((ok, fehler) => {
+    const a = indexedDB.open(ORDNER_DB, 1);
+    a.onupgradeneeded = () => a.result.createObjectStore("h");
+    a.onsuccess = () => {
+      const t = a.result.transaction("h", "readwrite");
+      t.objectStore("h").put(handle, "pipeline");
+      t.oncomplete = () => { a.result.close(); ok(); };
+      t.onerror = () => fehler(t.error);
+    };
+    a.onerror = () => fehler(a.error);
+  });
+}
+
+function ordnerHolen() {
+  return new Promise((ok) => {
+    try {
+      const a = indexedDB.open(ORDNER_DB, 1);
+      a.onupgradeneeded = () => a.result.createObjectStore("h");
+      a.onsuccess = () => {
+        const t = a.result.transaction("h", "readonly");
+        const g = t.objectStore("h").get("pipeline");
+        g.onsuccess = () => { a.result.close(); ok(g.result || null); };
+        g.onerror = () => { a.result.close(); ok(null); };
+      };
+      a.onerror = () => ok(null);
+    } catch (e) { ok(null); }
+  });
+}
+
+// Welche Datei ist wofuer gut. WICHTIG - hier wird nach dem NAMEN gefiltert,
+// nicht nach dem Inhalt: Im selben Ordner liegen auch die Detail-CSVs
+// (*_techniker_details.csv usw.). Die haben eine Zeile je AUFTRAG, nicht je
+// Techniker - wuerde man sie einlesen, haelt detectFormat sie fuer einen
+// Report (die Schalten-Details haben z.B. eine Spalte "Abschluss Call") und
+// baut daraus Unsinn. Deshalb: nur was hier steht, wird angefasst.
+const DATEI_ROLLEN = [
+  { endung: "_sms_feedback_schalten.csv", rolle: "report" },
+  { endung: "_sms_feedback.csv", rolle: "report" },
+  { endung: "_one_touch.csv", rolle: "report" },
+  { endung: "_nftq.csv", rolle: "report" },
+  { endung: "_ursachen.csv", rolle: "ursachen" },
+];
+
+function dateiRolle(name) {
+  const n = String(name || "").toLowerCase();
+  for (const r of DATEI_ROLLEN) {
+    if (n.endsWith(r.endung)) {
+      return { rolle: r.rolle, label: name.slice(0, name.length - r.endung.length) };
+    }
+  }
+  return null;
+}
+
+// Alle Dateien einsammeln, zwei Ebenen tief: Auftragsinfo_Downloads enthaelt
+// <KW>\ (Reports) und Pipeline\ (Ursachen).
+async function* dateienImOrdner(dir, tiefe = 0) {
+  for await (const e of dir.values()) {
+    if (e.kind === "file") yield e;
+    else if (e.kind === "directory" && tiefe < 2) yield* dateienImOrdner(e, tiefe + 1);
+  }
+}
 const FIRMA = (typeof window !== "undefined" && localStorage.getItem("firma_name")) || "Vikuline";   // Firmenname - im Agenten ueber den 'Firma'-Knopf aenderbar
 const DEFAULT_BASELINES = {
   gesamt: {
@@ -1464,6 +1548,9 @@ const getTermintreeuPunkte = (prozent) => {
 export default function KPIAgent() {
   const [gespeichert, setGespeichert] = useState({});
   const [ursachen, setUrsachen] = useState([]);
+  const [ordner, setOrdner] = useState(null);       // FileSystemDirectoryHandle
+  const [ordnerLaeuft, setOrdnerLaeuft] = useState(false);
+  const kannOrdner = typeof window !== "undefined" && "showDirectoryPicker" in window;
   const [kontakte, setKontakte] = useState({});
   const [baselines, setBaselines] = useState(DEFAULT_BASELINES);
   const [archiv, setArchiv] = useState([]);
@@ -1507,6 +1594,10 @@ export default function KPIAgent() {
       if (savedA) setArchiv(JSON.parse(savedA));
       const savedU = localStorage.getItem(URSACHEN_KEY);
       if (savedU) setUrsachen(JSON.parse(savedU));
+      // Gemerkten Ordner wiederfinden - aber NICHT ungefragt lesen. Der Browser
+      // will die Erlaubnis je Sitzung neu bestaetigt haben, und das darf nur
+      // ein Klick von Arash ausloesen, kein Seitenaufruf.
+      ordnerHolen().then(h => { if (h) setOrdner(h); });
     } catch(e) {}
   }, []);
 
@@ -1534,6 +1625,72 @@ export default function KPIAgent() {
       return neu;
     });
   }, [gespeichert]);
+
+  // Alles aus dem verbundenen Ordner lesen. Nimmt IMMER den neuesten Zeitraum,
+  // den es findet - liegen KW27 und KW28 nebeneinander, waere ein Mischen aus
+  // beiden das Schlimmste, was passieren koennte: Zahlen aus zwei Wochen unter
+  // einem Namen. Welcher genommen wurde, steht danach in der Meldung.
+  const ausOrdnerLesen = useCallback(async (handle) => {
+    setOrdnerLaeuft(true);
+    setError("");
+    try {
+      let recht = await handle.queryPermission({ mode: "read" });
+      if (recht !== "granted") recht = await handle.requestPermission({ mode: "read" });
+      if (recht !== "granted") {
+        setError("Zugriff auf den Ordner wurde nicht erlaubt.");
+        setOrdnerLaeuft(false);
+        return;
+      }
+      const gefunden = [];
+      for await (const eintrag of dateienImOrdner(handle)) {
+        const r = dateiRolle(eintrag.name);
+        if (r) gefunden.push({ eintrag, ...r });
+      }
+      if (!gefunden.length) {
+        setError("Keine passenden CSVs gefunden. Ist das der Ordner Auftragsinfo_Downloads?");
+        setOrdnerLaeuft(false);
+        return;
+      }
+      const labels = [...new Set(gefunden.map(g => g.label))].sort();
+      const label = labels[labels.length - 1];
+      const nehmen = gefunden.filter(g => g.label === label);
+
+      const neu = {};
+      let neueUrsachen = null;
+      const namen = [];
+      for (const g of nehmen) {
+        const text = await (await g.eintrag.getFile()).text();
+        const rows = parseCSV(text);
+        if (!rows.length) continue;
+        namen.push(g.eintrag.name);
+        if (g.rolle === "ursachen") { neueUrsachen = rows; continue; }
+        const quelle = rows[0].quelle || "standard";
+        neu[quelle] = rows;
+      }
+      if (Object.keys(neu).length) {
+        setGespeichert(prev => ({ ...prev, ...neu }));
+        setAktiveKategorie("alle");
+        setAiAnalysis(""); setMassnahmen([]); setMassnahmenFehler(null); setTechBewertungen({});
+      }
+      if (neueUrsachen) setUrsachen(neueUrsachen);
+      const uebrig = labels.length > 1 ? ` (${labels.length - 1} aeltere Zeitraeume liegen daneben und wurden NICHT geladen)` : "";
+      setError(`ok ${label}: ${namen.length} Dateien gelesen${uebrig}.`);
+    } catch (e) {
+      setError("Ordner konnte nicht gelesen werden: " + e.message);
+    }
+    setOrdnerLaeuft(false);
+  }, []);
+
+  const ordnerWaehlen = useCallback(async () => {
+    try {
+      const h = await window.showDirectoryPicker({ mode: "read" });
+      setOrdner(h);
+      await ordnerMerken(h);
+      await ausOrdnerLesen(h);
+    } catch (e) {
+      if (e && e.name !== "AbortError") setError("Ordner nicht gewaehlt: " + e.message);
+    }
+  }, [ausOrdnerLesen]);
 
   const handleRows = useCallback((rows) => {
     if (!rows.length) { setError("Keine Daten gefunden."); return; }
@@ -2124,6 +2281,28 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
             style={{ background: nurKritisch ? "#7f1d1d" : "#111827", color: nurKritisch ? "#fecaca" : "#9ca3af", border: `1px solid ${nurKritisch ? "#b91c1c" : "#374151"}`, padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
             {nurKritisch ? "Nur kritische" : "Alle"}
           </button>
+          {/* Ordner verbinden: EIN Klick statt fuenf Dateien einzeln suchen.
+              Der Knopf erscheint nur in Chrome/Edge - Firefox und Safari
+              koennen die File System Access API nicht, und ein Knopf, der
+              nichts tut, ist schlimmer als keiner. */}
+          {kannOrdner && (
+            ordner ? (
+              <button onClick={() => ausOrdnerLesen(ordner)} disabled={ordnerLaeuft}
+                title="Liest die CSVs aus dem verbundenen Ordner neu ein - immer den neuesten Zeitraum"
+                style={{ background: ordnerLaeuft ? "#1a2e1a" : "#0f2e1a", color: "#4ade80",
+                  border: "1px solid #14532d", padding: "6px 12px", borderRadius: 6,
+                  cursor: ordnerLaeuft ? "default" : "pointer", fontSize: 11, fontWeight: 600 }}>
+                {ordnerLaeuft ? "liest..." : "Aus Ordner aktualisieren"}
+              </button>
+            ) : (
+              <button onClick={ordnerWaehlen} disabled={ordnerLaeuft}
+                title="Einmal den Ordner Auftragsinfo_Downloads auswaehlen - danach holt der Agent die CSVs selbst. Die Daten bleiben auf deinem Rechner."
+                style={{ background: "#1e3a5f", color: "#dbeafe", border: "1px solid #2563eb",
+                  padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
+                Ordner verbinden
+              </button>
+            )
+          )}
           <label style={{ background: loading ? "#1a2e1a" : "#1f2937", color: loading ? "#4ade80" : "#9ca3af", border: `1px solid ${loading ? "#14532d" : "#374151"}`, padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>
             {loading ? "... Nächste" : " Upload"}
             <input type="file" accept=".csv,.xlsx,.xls,.png,.jpg,.jpeg,.pdf" onChange={handleFile} style={{ display: "none" }} />
