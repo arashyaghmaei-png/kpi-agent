@@ -999,6 +999,50 @@ function berichtText(name, meine, tech, bl) {
   return z.join("\n");
 }
 
+// Der Agent ist dunkel und steckt in Kacheln, die scrollen. window.print()
+// erwischt davon nur, was gerade sichtbar ist - Arash bekam ein PDF in
+// Bildschirmlaenge. Statt zu suchen, welches Element abschneidet, bekommt der
+// Bericht ein EIGENES Fenster: nur das Blatt, weisses Papier, volle Laenge.
+// Das ist unabhaengig davon, was der Agent drumherum treibt.
+const DRUCK_CSS = `
+  @page { size: A4; margin: 1.6cm; }
+  body { background: #fff; color: #111; margin: 0;
+         font-family: Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.45; }
+  /* Die Farben des Agenten sind fuer den Bildschirm gedacht - auf Papier
+     kaeme eine schwarze Seite heraus. Raender bleiben farbig, die sind der
+     einzige Hinweis auf die Einstufung. */
+  * { background-color: transparent !important; color: #111 !important;
+      box-shadow: none !important; max-height: none !important; overflow: visible !important; }
+  div[style*="border-left"] { padding-left: 10px !important; margin: 8px 0 !important;
+                              page-break-inside: avoid; }
+  div[style*="border-bottom"] { border-bottom: 1px solid #999 !important; }
+  div[style*="border: 1px solid"], div[style*="border:1px solid"] {
+      border: 1px solid #999 !important; }
+`;
+
+// Farbe im Mailtext.
+// WICHTIG: Das hier ist KEIN zweiter Bericht - es faerbt nur ein, was
+// berichtText() geschrieben hat. Zwei Fassungen desselben Textes waeren genau
+// der Fehler, den wir im ganzen Projekt bekaempfen: sie laufen auseinander,
+// und dann steht im Bildschirm etwas anderes als in der Mail.
+//
+// Eine mailto-Mail ist immer reiner Text - da geht keine Farbe rein. Beim
+// KOPIEREN aber schon: die Zwischenablage kann Text UND HTML tragen, und
+// Outlook nimmt das HTML. Da Arashs Berichte fuer mailto ohnehin zu lang sind
+// und er sie kopiert, ist das der Weg, den er wirklich geht.
+function berichtAlsHtml(text) {
+  const e = String(text || "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return e
+    // Ueberschriften des Berichts fett - erkennbar an Grossbuchstaben am Zeilenanfang
+    .replace(/^(DEINE ZAHLEN[^\n]*|GUT GELAUFEN[^\n]*|UNZUFRIEDENE KUNDEN[^\n]*|NACHFOLGETICKETS[^\n]*|AUFTRAEGE OHNE[^\n]*)$/gm,
+      '<b style="color:#111">$1</b>')
+    .replace(/\bkritisch\b/g, '<span style="color:#c00;font-weight:bold">kritisch</span>')
+    .replace(/\bWarnung\b/g, '<span style="color:#b26b00;font-weight:bold">Warnung</span>')
+    .replace(/\bim Ziel\b/g, '<span style="color:#1b7a2f;font-weight:bold">im Ziel</span>')
+    .replace(/\n/g, "<br>");
+}
+
 function BerichtTab({ ursachen, techs, baselines, kontakte, nurTechniker, onWaehlen }) {
   const namen = [...new Set((ursachen || []).map(u => u.name))].sort();
   // Die Auswahl oben in der Kopfleiste gilt auch hier - sonst waehlt man
@@ -1010,6 +1054,30 @@ function BerichtTab({ ursachen, techs, baselines, kontakte, nurTechniker, onWaeh
   const [gewaehlt, setGewaehlt] = useState(namen[0] || "");
   const [mailOffen, setMailOffen] = useState(false);
   const [kopiert, setKopiert] = useState(false);
+  const blattRef = useRef(null);
+
+  const drucken = (wenName) => {
+    const inhalt = blattRef.current ? blattRef.current.innerHTML : "";
+    const w = window.open("", "_blank", "width=900,height=1100");
+    if (!w) {
+      // Popup-Blocker. Dann wenigstens der alte Weg - lieber ein kurzes PDF
+      // als gar keins, aber der Grund gehoert gesagt.
+      window.alert("Der Browser hat das Druckfenster blockiert.\n\n" +
+        "Erlaube Pop-ups fuer diese Seite - sonst druckt er nur den sichtbaren " +
+        "Bildschirmausschnitt statt des ganzen Berichts.");
+      window.print();
+      return;
+    }
+    w.document.write('<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">' +
+      '<title>' + String(wenName || "Bericht").replace(/[<>]/g, "") + '</title>' +
+      '<style>' + DRUCK_CSS + '</style></head><body>' + inhalt + '</body></html>');
+    w.document.close();
+    w.focus();
+    // Kurz warten, sonst druckt Chrome ein leeres Blatt - das Fenster ist
+    // noch nicht fertig aufgebaut.
+    setTimeout(() => { w.print(); }, 400);
+  };
+
   if (!namen.length) {
     return (
       <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8, padding: 24, textAlign: "center" }}>
@@ -1062,7 +1130,8 @@ function BerichtTab({ ursachen, techs, baselines, kontakte, nurTechniker, onWaeh
           style={{ background: "#1f2937", color: "#f9fafb", border: "1px solid #374151", borderRadius: 6, padding: "7px 10px", fontSize: 12 }}>
           {namen.map(n => <option key={n} value={n}>{n}</option>)}
         </select>
-        <button onClick={() => window.print()}
+        <button onClick={() => drucken(name)}
+          title="Oeffnet den Bericht als sauberes weisses Blatt in voller Laenge - dort Strg+P oder 'Als PDF speichern'"
           style={{ background: "#1f2937", color: "#f9fafb", border: "1px solid #374151", borderRadius: 6, padding: "7px 12px", fontSize: 12, cursor: "pointer" }}>
           Drucken / Als PDF
         </button>
@@ -1070,9 +1139,10 @@ function BerichtTab({ ursachen, techs, baselines, kontakte, nurTechniker, onWaeh
           style={{ background: "#1e3a5f", color: "#dbeafe", border: "1px solid #2563eb", borderRadius: 6, padding: "7px 12px", fontSize: 12, cursor: "pointer" }}>
           Mail vorbereiten
         </button>
-        <span style={{ fontSize: 10, color: "#6b7280", maxWidth: 420, lineHeight: 1.4 }}>
+        <span style={{ fontSize: 10, color: "#6b7280", maxWidth: 430, lineHeight: 1.4 }}>
           Die Mail enthaelt den ganzen Bericht als Text - kein Anhang noetig.
-          "Als PDF" ist fuer die Ablage oder wenn du das Blatt ausgedruckt mitnehmen willst.
+          "Als PDF" oeffnet ein eigenes weisses Blatt in voller Laenge; dort im
+          Druckdialog "Als PDF speichern". Falls nichts aufgeht: Pop-ups erlauben.
         </span>
       </div>
 
@@ -1084,11 +1154,41 @@ function BerichtTab({ ursachen, techs, baselines, kontakte, nurTechniker, onWaeh
           <div style={{ fontSize: 10, color: "#6b7280", marginBottom: 6 }}>
             Nichts anzuhaengen: Zahlen, Ampel und Kundentexte stehen in der Mail selbst.
           </div>
-          <textarea readOnly value={text} rows={18}
-            style={{ width: "100%", background: "#111827", color: "#d1d5db", border: "1px solid #374151",
-              borderRadius: 6, padding: 10, fontSize: 11, fontFamily: "monospace", lineHeight: 1.5 }} />
+          {/* Kein Textfeld mehr: ein Textfeld kann nur EINE Farbe. So siehst du
+              schon vor dem Kopieren, was rot ist - und genau das landet auch
+              in der Mail. */}
+          <div style={{ width: "100%", background: "#0b1220", color: "#d1d5db",
+            border: "1px solid #374151", borderRadius: 6, padding: 12, fontSize: 11,
+            fontFamily: "Consolas, monospace", lineHeight: 1.55, maxHeight: 420,
+            overflowY: "auto", whiteSpace: "pre-wrap" }}
+            dangerouslySetInnerHTML={{ __html: berichtAlsHtml(text)
+              .replace(/color:#111/g, "color:#f9fafb")
+              .replace(/color:#c00/g, "color:#f87171")
+              .replace(/color:#b26b00/g, "color:#fbbf24")
+              .replace(/color:#1b7a2f/g, "color:#4ade80") }} />
           <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <button onClick={() => { navigator.clipboard && navigator.clipboard.writeText(text); setKopiert(true); setTimeout(() => setKopiert(false), 2000); }}
+            <button onClick={async () => {
+              // Zwei Fassungen in die Zwischenablage: HTML fuer Outlook (mit
+              // Farbe), reiner Text fuer alles andere. Das Mailprogramm nimmt
+              // sich, was es versteht - kann es kein HTML, kommt der Text an
+              // und nichts geht verloren.
+              const html = '<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;' +
+                'line-height:1.4;color:#111">' + berichtAlsHtml(text) + '</div>';
+              try {
+                if (navigator.clipboard && window.ClipboardItem) {
+                  await navigator.clipboard.write([new window.ClipboardItem({
+                    "text/html": new Blob([html], { type: "text/html" }),
+                    "text/plain": new Blob([text], { type: "text/plain" }),
+                  })]);
+                } else if (navigator.clipboard) {
+                  await navigator.clipboard.writeText(text);   // ohne Farbe, aber vollstaendig
+                }
+                setKopiert(true); setTimeout(() => setKopiert(false), 2000);
+              } catch (e) {
+                try { await navigator.clipboard.writeText(text); setKopiert(true); setTimeout(() => setKopiert(false), 2000); }
+                catch (e2) { window.alert("Kopieren hat nicht geklappt - bitte den Text oben von Hand markieren."); }
+              }
+            }}
               style={{ background: zuLang ? "#2563eb" : "#1f2937", color: zuLang ? "#fff" : "#f9fafb",
                 border: zuLang ? "none" : "1px solid #374151", borderRadius: 6, padding: "7px 12px", fontSize: 12, cursor: "pointer", fontWeight: zuLang ? 600 : 400 }}>
               {kopiert ? "kopiert" : "Ganzen Bericht kopieren"}
@@ -1114,7 +1214,7 @@ function BerichtTab({ ursachen, techs, baselines, kontakte, nurTechniker, onWaeh
         </div>
       )}
 
-      <div className="druckblatt" style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8, padding: "20px 24px" }}>
+      <div className="druckblatt" ref={blattRef} style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8, padding: "20px 24px" }}>
         <div style={{ fontSize: 20, fontWeight: 700, color: "#f9fafb" }}>{name}</div>
         <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 14 }}>
           Ursachenbericht{ats ? ` · ATS ${ats}` : ""}{tech ? ` · ${tech.auftraege} Auftraege` : ""}
