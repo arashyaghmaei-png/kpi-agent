@@ -210,6 +210,22 @@ Status gut = Lob aussprechen. Kein Markdown im JSON.
 // schreibt dann NPS BS = 0,00 - und der Agent machte daraus "NPS Montage 0,
 // KRITISCH". Ein Mann ohne eine einzige Bewertung stand als kritisch da.
 // Die Mindestmengen-Pruefung konnte nicht greifen, weil sie die 0 nie sah.
+// Der One-Touch-Report schreibt "Kheder Adil", die anderen "Adil Kheder" -
+// derselbe Mann, zwei Schreibweisen. Der Agent hat daraus ZWEI Techniker
+// gemacht: 16 statt 8. Deshalb wird zum Zusammenfuehren nicht der Name
+// verglichen, sondern die SORTIERTEN Namensteile. So passt jede Reihenfolge
+// zusammen. (Im Ursachenbericht steht dieselbe Regel - ohne sie haetten die
+// One-Touch-Befunde nie zu einem Techniker gefunden.)
+function namensSchluessel(name) {
+  return String(name || "")
+    .toLowerCase()
+    .replace(/[^a-zäöüß\s-]/g, " ")
+    .split(/[\s-]+/)
+    .filter(Boolean)
+    .sort()
+    .join(" ");
+}
+
 function ganzzahl(v) {
   const n = parseInt(String(v ?? "").trim(), 10);
   return isNaN(n) ? null : n;   // 0 bleibt 0, nur echter Unsinn wird null
@@ -1003,7 +1019,9 @@ function BerichtTab({ ursachen, techs, baselines, kontakte }) {
   }
   const name = namen.includes(gewaehlt) ? gewaehlt : namen[0];
   const meine = (ursachen || []).filter(u => u.name === name);
-  const tech = (techs || []).find(t => t.name === name);
+  // Auch hier ueber die Namensteile: der Techniker heisst in den Kennzahlen
+  // vielleicht "Kheder Adil" und im Bericht "Adil Kheder".
+  const tech = (techs || []).find(t => namensSchluessel(t.name) === namensSchluessel(name));
   const bl = tech && String(tech.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
   const sortiert = [...meine].sort(
     (a, b) => (URSACHEN_RANG[a.einstufung] ?? 9) - (URSACHEN_RANG[b.einstufung] ?? 9));
@@ -1841,7 +1859,8 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
           // die Felder wurden eingelesen, aber beim Zusammenfuehren weggelassen.
           "nps_montage", "nps_pb", "anzahl_nps_montage", "anzahl_nps_pb"];
         Object.values(gespeichert).flat().forEach(t => {
-          const key = t.name + "#" + String(t.standort);
+          // Schluessel ueber die sortierten Namensteile - siehe namensSchluessel().
+          const key = namensSchluessel(t.name) + "#" + String(t.standort);
           if (!merged[key]) merged[key] = { name: t.name, standort: t.standort, quelle: "alle", auftraege: 0, standortUnbekannt: t.standortUnbekannt };
           const m = merged[key];
           felder.forEach(f => { if ((m[f] === undefined || m[f] === null) && t[f] !== undefined && t[f] !== null) m[f] = t[f]; });
@@ -2242,7 +2261,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
 
       {/* KPI Warnungsleiste */}
       {(() => {
-        const alleTechs = Object.values(gespeichert).flat().filter((t, idx, arr) => arr.findLastIndex(x => x.name === t.name && String(x.standort) === String(t.standort)) === idx);
+        const alleTechs = Object.values(gespeichert).flat().filter((t, idx, arr) => arr.findLastIndex(x => namensSchluessel(x.name) === namensSchluessel(t.name) && String(x.standort) === String(t.standort)) === idx);
         const kritisch = alleTechs.filter(t => t.overallStatus === "kritisch");
         const warnung = alleTechs.filter(t => t.overallStatus === "warnung");
         if (kritisch.length === 0 && warnung.length === 0) return null;
@@ -2270,7 +2289,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
             {KATEGORIEN.map(k => {
               const anzahl = k.id === "alle"
-                ? Object.values(gespeichert).flat().filter((t, idx, arr) => arr.findLastIndex(x => x.name === t.name && String(x.standort) === String(t.standort)) === idx).length
+                ? Object.values(gespeichert).flat().filter((t, idx, arr) => arr.findLastIndex(x => namensSchluessel(x.name) === namensSchluessel(t.name) && String(x.standort) === String(t.standort)) === idx).length
                 : (gespeichert[k.id] || []).length;
               const aktiv = aktiveKategorie === k.id;
               const hatDatenInKat = k.id === "alle" ? hatDaten : anzahl > 0;
@@ -2469,7 +2488,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
                   const vorTechs = archiv.length > 0 ? Object.values(archiv[archiv.length-1].daten).flat() : [];
                   const vorperiode = vorTechs.find(v => v.name === t.name) || null;
                   return <TechCard key={i} tech={t} baselines={baselines} vorperiode={vorperiode}
-                    ursachen={(ursachen || []).filter(u => u.name === t.name)} />;
+                    ursachen={(ursachen || []).filter(u => namensSchluessel(u.name) === namensSchluessel(t.name))} />;
                 })}</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <button onClick={runAnalysis} disabled={loading}
