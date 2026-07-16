@@ -204,6 +204,17 @@ Status gut = Lob aussprechen. Kein Markdown im JSON.
 ## Baseline-Vergleich
 ## Empfehlungen Leitstelle`;
 
+// "0" muss 0 bleiben. Vorher stand ueberall parseInt(...) || null - und in
+// JavaScript ist 0 || null gleich null. Damit verschwand die Null: Adil Kheder
+// hatte in KW28 NULL Montage-Rueckmeldungen (Anzahl NPS BS = 0), das Portal
+// schreibt dann NPS BS = 0,00 - und der Agent machte daraus "NPS Montage 0,
+// KRITISCH". Ein Mann ohne eine einzige Bewertung stand als kritisch da.
+// Die Mindestmengen-Pruefung konnte nicht greifen, weil sie die 0 nie sah.
+function ganzzahl(v) {
+  const n = parseInt(String(v ?? "").trim(), 10);
+  return isNaN(n) ? null : n;   // 0 bleibt 0, nur echter Unsinn wird null
+}
+
 function parsePercent(val) {
   if (val === undefined || val === null || val === "") return null;
   const s = String(val).replace(",", ".").replace("%", "").trim();
@@ -369,11 +380,11 @@ function normalizeRows(rawRows) {
           infoquote_p: parsePercent(get(row, "infoquote p")),
           geplatzte_termine: parsePercent(get(row, "t. geplatz")),
           sterne: parseFloat(String(get(row, "sterne") || "").replace(",", ".")) || null,
-          anzahl_nps: parseInt(get(row, "anzahl nps gesamt")) || null,
+          anzahl_nps: ganzzahl(get(row, "anzahl nps gesamt")),
           nps_montage: npsZahl(get(row, "nps bs")),
           nps_pb: npsZahl(get(row, "nps pb")),
-          anzahl_nps_montage: parseInt(get(row, "anzahl nps bs")) || null,
-          anzahl_nps_pb: parseInt(get(row, "anzahl nps pb")) || null,
+          anzahl_nps_montage: ganzzahl(get(row, "anzahl nps bs")),
+          anzahl_nps_pb: ganzzahl(get(row, "anzahl nps pb")),
           nps: null,
           auftraege: get(row, "anzahl") || "-",
           quelle: "smsfeedback", standortUnbekannt: false
@@ -391,7 +402,7 @@ function normalizeRows(rawRows) {
           loesungsquote: parsePercent(get(row, "erledigt")),
           nps: isNaN(npsVal) ? null : npsVal,
           auftraege: get(row, "anzahl") || "-",
-          anzahl_nps: parseInt(get(row, "anzahl nps")) || null,
+          anzahl_nps: ganzzahl(get(row, "anzahl nps")),
           quelle: "smsfeedbackschalten", standortUnbekannt: false
         };
       }
@@ -404,10 +415,10 @@ function normalizeRows(rawRows) {
           nftq_m: parsePercent(get(row, "nftq m")),
           nftq_p: parsePercent(get(row, "nftq p")),
           auftraege: get(row, "anzahl") || "-",
-          menge_b: parseInt(get(row, "bereitstellung")) || null,
-          menge_s: parseInt(get(row, "schalten")) || null,
-          menge_m: parseInt(get(row, "montage")) || null,
-          menge_p: parseInt(get(row, "problembehebung")) || null,
+          menge_b: ganzzahl(get(row, "bereitstellung")),
+          menge_s: ganzzahl(get(row, "schalten")),
+          menge_m: ganzzahl(get(row, "montage")),
+          menge_p: ganzzahl(get(row, "problembehebung")),
           quelle: "nftq", standortUnbekannt: false
         };
       }
@@ -760,16 +771,23 @@ function TechCard({ tech, baselines, vorperiode, ursachen }) {
           { wert: tech.nps_pb, ziel: bl.nps_pb ?? 67, label: "NPS Problembeh.", anz: tech.anzahl_nps_pb },
           { wert: tech.nps, ziel: bl.nps ?? 67, label: "NPS", anz: tech.anzahl_nps },
         ].filter(n => n.wert !== null && n.wert !== undefined && !isNaN(n.wert)).map(n => {
-          const st = getNPSStatus(n.wert, n.ziel);
-          const c = st === "kritisch" ? "#f87171" : st === "warnung" ? "#fbbf24" : "#4ade80";
+          // n.anz MUSS mit: sonst bewertet die Anzeige, was die Rechnung
+          // daneben verschweigt - und im selben Kaestchen stuenden zwei Ampeln.
+          const st = getNPSStatus(n.wert, n.ziel, n.anz);
+          const c = st === "kritisch" ? "#f87171" : st === "warnung" ? "#fbbf24"
+                  : st === "gut" ? "#4ade80" : "#6b7280";
           return (
             <div key={n.label} style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <span style={{ fontSize: 11, color: "#9ca3af" }}>{n.label}:</span>
               <span style={{ color: c, fontWeight: 700, fontSize: 13, fontFamily: "monospace" }}>{n.wert.toFixed(0)}</span>
-              <span style={{ background: STATUS_STYLE[st]?.bg, color: c, padding: "1px 6px", borderRadius: 3, fontSize: 10, fontFamily: "monospace", fontWeight: 700 }}>
-                {st === "kritisch" ? "KRITISCH" : st === "warnung" ? "WARNUNG" : "GUT"}
+              <span style={{ background: st ? STATUS_STYLE[st]?.bg : "transparent", color: st ? c : "#6b7280", padding: "1px 6px", borderRadius: 3, fontSize: 10, fontFamily: "monospace", fontWeight: st ? 700 : 400 }}>
+                {st === "kritisch" ? "KRITISCH" : st === "warnung" ? "WARNUNG" : st === "gut" ? "GUT" : "nicht bewertet"}
               </span>
-              <span style={{ fontSize: 10, color: "#4b5563" }}>Ziel: {n.ziel}{n.anz ? ` (${n.anz} Rueckmeldungen)` : ""}</span>
+              <span style={{ fontSize: 10, color: "#4b5563" }}>
+                Ziel: {n.ziel}{n.anz !== null && n.anz !== undefined ? ` (${n.anz} Rueckmeldungen)` : ""}
+                {st === null && n.anz !== null && n.anz !== undefined && n.anz < MINDEST_NPS
+                  ? ` - unter ${MINDEST_NPS}, daraus laesst sich nichts ablesen` : ""}
+              </span>
             </div>
           );
         })}
