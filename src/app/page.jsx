@@ -1786,21 +1786,29 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
     }
   }, [handleRows]);
 
-  const processFile = useCallback((file) => {
-    if (file.name.match(/\.xlsx?$/i)) { processXLSX(file); }
-    else if (file.name.match(/\.(png|jpg|jpeg|gif|webp)$/i)) { handleImageOCR(file); }
+  const processFile = useCallback(async (file) => {
+    // Gibt jetzt ein Versprechen zurueck, damit mehrere Dateien NACHEINANDER
+    // laufen koennen. Der alte FileReader arbeitete mit Rueckrufen - darauf
+    // kann man nicht warten. Fuenf Dateien waeren gleichzeitig losgelaufen und
+    // haetten sich gegenseitig ueberschrieben, ohne dass es jemand merkt.
+    if (file.name.match(/\.xlsx?$/i)) { await processXLSX(file); }
+    else if (file.name.match(/\.(png|jpg|jpeg|gif|webp)$/i)) { await handleImageOCR(file); }
     else {
-      const reader = new FileReader();
-      reader.onload = (ev) => handleRows(parseCSV(ev.target.result));
-      reader.readAsText(file, "utf-8");
+      const text = await file.text();
+      handleRows(parseCSV(text));
     }
   }, [processXLSX, handleRows, handleImageOCR]);
 
   const handleFile = useCallback((e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    // Vorher: e.target.files[0] - also genau EINE Datei je Klick. Bei fuenf
+    // CSVs hiess das fuenfmal suchen, fuenfmal den Zeitraum bestaetigen.
+    // Der Zeitraum wird EINMAL gefragt und gilt fuer alle: wer mehrere Dateien
+    // zusammen auswaehlt, meint denselben Zeitraum. Waeren es verschiedene,
+    // waere das Zusammenwerfen ohnehin falsch.
+    const dateien = Array.from(e.target.files || []);
+    if (!dateien.length) return;
     e.target.value = "";
-    setPendingFile(file);
+    setPendingFile(dateien);
     setShowPeriodDialog(true);
   }, []);
 
@@ -2196,7 +2204,17 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
         onConfirm={(period) => {
           setUploadPeriod(period);
           setShowPeriodDialog(false);
-          if (pendingFile) { processFile(pendingFile); setPendingFile(null); }
+          if (pendingFile) {
+            // Nacheinander, nicht gleichzeitig: die Verarbeitung schreibt in
+            // denselben Zustand, und zwei Dateien parallel wuerden sich
+            // gegenseitig ueberschreiben - leise, ohne Fehlermeldung.
+            const liste = Array.isArray(pendingFile) ? pendingFile : [pendingFile];
+            (async () => {
+              for (const f of liste) { await processFile(f); }
+              if (liste.length > 1) setError(`ok ${liste.length} Dateien gelesen.`);
+            })();
+            setPendingFile(null);
+          }
         }}
         onCancel={() => { setShowPeriodDialog(false); setPendingFile(null); }}
       />}
@@ -2305,7 +2323,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
           )}
           <label style={{ background: loading ? "#1a2e1a" : "#1f2937", color: loading ? "#4ade80" : "#9ca3af", border: `1px solid ${loading ? "#14532d" : "#374151"}`, padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>
             {loading ? "... Nächste" : " Upload"}
-            <input type="file" accept=".csv,.xlsx,.xls,.png,.jpg,.jpeg,.pdf" onChange={handleFile} style={{ display: "none" }} />
+            <input type="file" multiple accept=".csv,.xlsx,.xls,.png,.jpg,.jpeg,.pdf" onChange={handleFile} style={{ display: "none" }} />
           </label>
           {angezeigt.length > 0 && <button onClick={exportPDF} disabled={exporting} style={{ background: "#1f2937", color: "#9ca3af", border: "1px solid #374151", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}> PDF</button>}
           {aktiveKategorie !== "alle" && gespeichert[aktiveKategorie] && <button onClick={() => loescheKategorie(aktiveKategorie)} style={{ background: "#2e0f0f", color: "#f87171", border: "1px solid #7f1d1d", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 700 }}> {KATEGORIEN.find(k => k.id === aktiveKategorie)?.label} löschen</button>}
@@ -2321,7 +2339,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
             <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 24 }}>Wird automatisch der richtigen Kategorie zugeordnet</div>
             <label style={{ display: "inline-block", background: "#1d4ed8", color: "#fff", padding: "10px 24px", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
                Datei wählen (.csv / .xlsx)
-              <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} style={{ display: "none" }} />
+              <input type="file" multiple accept=".csv,.xlsx,.xls" onChange={handleFile} style={{ display: "none" }} />
             </label>
             {error ? <div style={{ marginTop: 16, color: "#4ade80", fontSize: 13 }}>{error}</div> : null}
           </div>
@@ -2332,7 +2350,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
             <div style={{ fontSize: 14, color: "#6b7280", marginBottom: 16 }}>Noch keine Daten für "{KATEGORIEN.find(k => k.id === aktiveKategorie)?.label}"</div>
             <label style={{ display: "inline-block", background: "#1d4ed8", color: "#fff", padding: "10px 24px", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
                Export hochladen
-              <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} style={{ display: "none" }} />
+              <input type="file" multiple accept=".csv,.xlsx,.xls" onChange={handleFile} style={{ display: "none" }} />
             </label>
           </div>
         )}
