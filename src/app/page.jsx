@@ -999,8 +999,14 @@ function berichtText(name, meine, tech, bl) {
   return z.join("\n");
 }
 
-function BerichtTab({ ursachen, techs, baselines, kontakte }) {
+function BerichtTab({ ursachen, techs, baselines, kontakte, nurTechniker, onWaehlen }) {
   const namen = [...new Set((ursachen || []).map(u => u.name))].sort();
+  // Die Auswahl oben in der Kopfleiste gilt auch hier - sonst waehlt man
+  // zweimal denselben Mann und wundert sich, warum die Reiter
+  // Verschiedenes zeigen.
+  const vonOben = nurTechniker
+    ? namen.find(n => namensSchluessel(n) === nurTechniker) || ""
+    : "";
   const [gewaehlt, setGewaehlt] = useState(namen[0] || "");
   const [mailOffen, setMailOffen] = useState(false);
   const [kopiert, setKopiert] = useState(false);
@@ -1017,7 +1023,7 @@ function BerichtTab({ ursachen, techs, baselines, kontakte }) {
       </div>
     );
   }
-  const name = namen.includes(gewaehlt) ? gewaehlt : namen[0];
+  const name = vonOben || (namen.includes(gewaehlt) ? gewaehlt : namen[0]);
   const meine = (ursachen || []).filter(u => u.name === name);
   // Auch hier ueber die Namensteile: der Techniker heisst in den Kennzahlen
   // vielleicht "Kheder Adil" und im Bericht "Adil Kheder".
@@ -1047,7 +1053,12 @@ function BerichtTab({ ursachen, techs, baselines, kontakte }) {
       }`}</style>
 
       <div className="nicht-drucken" style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
-        <select value={name} onChange={e => { setGewaehlt(e.target.value); setMailOffen(false); }}
+        <select value={name} onChange={e => {
+          setGewaehlt(e.target.value);
+          setMailOffen(false);
+          // Auch nach oben durchreichen: eine Auswahl, alle Reiter.
+          if (onWaehlen) onWaehlen(namensSchluessel(e.target.value));
+        }}
           style={{ background: "#1f2937", color: "#f9fafb", border: "1px solid #374151", borderRadius: 6, padding: "7px 10px", fontSize: 12 }}>
           {namen.map(n => <option key={n} value={n}>{n}</option>)}
         </select>
@@ -1611,6 +1622,11 @@ export default function KPIAgent() {
   const [loginError, setLoginError] = useState("");
   const [currentUser, setCurrentUser] = useState("");
   const [minAuftraege, setMinAuftraege] = useState(1);
+  // Ein Techniker, ueber alle Reiter hinweg. Bisher konnte man nur im Bericht
+  // einen auswaehlen - in den Kennzahlen-Reitern musste man ihn suchen.
+  // Gespeichert wird der NAMENSSCHLUESSEL, nicht der Name: sonst greift der
+  // Filter im One-Touch-Reiter nicht, wo er "Kheder Adil" heisst.
+  const [nurTechniker, setNurTechniker] = useState("");
   const [nurKritisch, setNurKritisch] = useState(false);
   const [showVerlauf, setShowVerlauf] = useState(null);
   const [uploadPeriod, setUploadPeriod] = useState(null); // { von, bis, kw, label }
@@ -1871,9 +1887,22 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
       })()
     : (gespeichert[aktiveKategorie] || [])
   ).filter(t => {
+    if (nurTechniker && namensSchluessel(t.name) !== nurTechniker) return false;
     const auftr = typeof t.auftraege === "number" ? t.auftraege : parseInt(t.auftraege) || 0;
     return auftr >= minAuftraege;
   });
+
+  // Alle Namen, die es irgendwo gibt - aus den Kennzahlen UND aus dem
+  // Ursachenbericht. Ein Techniker, der diese Woche nur Befunde hat, soll
+  // trotzdem waehlbar sein.
+  const alleNamen = (() => {
+    const m = new Map();
+    [...Object.values(gespeichert).flat(), ...ursachen].forEach(t => {
+      const k = namensSchluessel(t.name);
+      if (k && !m.has(k)) m.set(k, t.name);
+    });
+    return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  })();
 
   const hatDaten = Object.keys(gespeichert).length > 0;
 
@@ -2353,6 +2382,21 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
               style={{ width: 36, background: "transparent", border: "none", color: "#e5e7eb", fontSize: 11, textAlign: "center", outline: "none" }} />
             <span style={{ fontSize: 10, color: "#6b7280" }}>Auftr.</span>
           </div>
+          {/* Techniker-Auswahl - gilt fuer ALLE Reiter, nicht nur fuer den
+              Bericht. Wer ueber einen Mann redet, will ihn in allen vier
+              Bereichen sehen, ohne ihn viermal zu suchen. */}
+          {alleNamen.length > 0 && (
+            <select value={nurTechniker} onChange={e => setNurTechniker(e.target.value)}
+              title="Einen Techniker ueberall anzeigen - Dashboard, alle Kennzahlen und Bericht"
+              style={{ background: nurTechniker ? "#1e3a5f" : "#111827",
+                color: nurTechniker ? "#dbeafe" : "#9ca3af",
+                border: `1px solid ${nurTechniker ? "#2563eb" : "#374151"}`,
+                padding: "6px 10px", borderRadius: 6, cursor: "pointer", fontSize: 11,
+                fontWeight: nurTechniker ? 600 : 400, maxWidth: 200 }}>
+              <option value="">Alle Techniker</option>
+              {alleNamen.map(([k, name]) => <option key={k} value={k}>{name}</option>)}
+            </select>
+          )}
           <button onClick={() => setNurKritisch(v => !v)} title="Zwischen allen und nur kritischen Technikern umschalten"
             style={{ background: nurKritisch ? "#7f1d1d" : "#111827", color: nurKritisch ? "#fecaca" : "#9ca3af", border: `1px solid ${nurKritisch ? "#b91c1c" : "#374151"}`, padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
             {nurKritisch ? "Nur kritische" : "Alle"}
@@ -2509,7 +2553,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
 
             {activeTab === "berichte" && (
               <BerichtTab ursachen={ursachen} techs={angezeigt} baselines={baselines}
-                kontakte={kontakte} />
+                kontakte={kontakte} nurTechniker={nurTechniker} onWaehlen={setNurTechniker} />
             )}
             {activeTab === "firmendashboard" && <FirmendashboardTab />}
 
