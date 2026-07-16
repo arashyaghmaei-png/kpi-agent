@@ -14,6 +14,21 @@ const ARCHIV_KEY = "fibernc_archiv";
 const URSACHEN_KEY = "fibernc_ursachen";
 
 // ---------------------------------------------------------------------------
+// WIE ALT SIND DIE GESPEICHERTEN DATEN?
+// Die Zahlen liegen fertig eingelesen im Browser. Repariere ich das EINLESEN,
+// wirkt das NICHT rueckwirkend - was drin liegt, bleibt falsch, bis es neu
+// hochgeladen wird.
+// Passiert am 16.07.2026 genau so: "0 Rueckmeldungen" wurde beim Einlesen zu
+// "unbekannt" (parseInt("0") || null). Nach der Reparatur zeigte der Agent bei
+// Alae@36 weiter KRITISCH - die Datei war richtig, der Speicher nicht. Arash
+// konnte das nicht wissen.
+// Deshalb: Wird das Einlesen geaendert, DATEN_VERSION hochzaehlen. Dann sagt
+// der Agent es von selbst, statt still falsche Zahlen zu zeigen.
+// ---------------------------------------------------------------------------
+const VERSION_KEY = "fibernc_daten_version";
+const DATEN_VERSION = 2;   // 2 = seit der Reparatur "0 bleibt 0" (16.07.2026)
+
+// ---------------------------------------------------------------------------
 // ORDNER VERBINDEN
 // Arash musste bisher jede CSV einzeln suchen und hochladen - fuenf Stueck,
 // verteilt auf zwei Ordner (Reports in <KW>\, Ursachen in Pipeline\). Mit der
@@ -806,13 +821,17 @@ function TechCard({ tech, baselines, vorperiode, ursachen }) {
         <KPIBar value={tech.loesungsquote} baseline={bl.loesungsquote} label="Lösungsquote"
           trend={vorperiode ? getTrend(tech.loesungsquote, vorperiode.loesungsquote) : null} />
         {[
-          { wert: tech.nps_montage, ziel: bl.nps_montage ?? 67, label: "NPS Montage", anz: tech.anzahl_nps_montage },
-          { wert: tech.nps_pb, ziel: bl.nps_pb ?? 67, label: "NPS Problembeh.", anz: tech.anzahl_nps_pb },
-          { wert: tech.nps, ziel: bl.nps ?? 67, label: "NPS", anz: tech.anzahl_nps },
+          { wert: tech.nps_montage, ziel: bl.nps_montage ?? 68, label: "NPS Montage", anz: tech.anzahl_nps_montage },
+          { wert: tech.nps_pb, ziel: bl.nps_pb ?? 68, label: "NPS Problembeh.", anz: tech.anzahl_nps_pb },
+          // NPS Schalten hat KEINEN Zielwert in der Gesamtsicht Qualitaet.
+          // Vorher stand hier "ziel: bl.nps ?? 67" - der Agent haette ab zwei
+          // Rueckmeldungen gegen 68 geurteilt. Dass bei Alae "nicht bewertet"
+          // stand, lag nur an der Mindestmenge, nicht am fehlenden Zielwert.
+          { wert: tech.nps, ziel: null, label: "NPS Schalten", anz: tech.anzahl_nps, ohneZiel: true },
         ].filter(n => n.wert !== null && n.wert !== undefined && !isNaN(n.wert)).map(n => {
           // n.anz MUSS mit: sonst bewertet die Anzeige, was die Rechnung
           // daneben verschweigt - und im selben Kaestchen stuenden zwei Ampeln.
-          const st = getNPSStatus(n.wert, n.ziel, n.anz);
+          const st = n.ohneZiel ? null : getNPSStatus(n.wert, n.ziel, n.anz);
           const c = st === "kritisch" ? "#f87171" : st === "warnung" ? "#fbbf24"
                   : st === "gut" ? "#4ade80" : "#6b7280";
           return (
@@ -823,8 +842,9 @@ function TechCard({ tech, baselines, vorperiode, ursachen }) {
                 {st === "kritisch" ? "KRITISCH" : st === "warnung" ? "WARNUNG" : st === "gut" ? "GUT" : "nicht bewertet"}
               </span>
               <span style={{ fontSize: 10, color: "#4b5563" }}>
-                Ziel: {n.ziel}{n.anz !== null && n.anz !== undefined ? ` (${n.anz} Rueckmeldungen)` : ""}
-                {st === null && n.anz !== null && n.anz !== undefined && n.anz < MINDEST_NPS
+                {n.ohneZiel ? "kein Telekom-Zielwert - Wert ohne Urteil" : `Ziel: ${n.ziel}`}
+                {n.anz !== null && n.anz !== undefined ? ` (${n.anz} Rueckmeldungen)` : ""}
+                {!n.ohneZiel && st === null && n.anz !== null && n.anz !== undefined && n.anz < MINDEST_NPS
                   ? ` - unter ${MINDEST_NPS}, daraus laesst sich nichts ablesen` : ""}
               </span>
             </div>
@@ -854,6 +874,10 @@ const URSACHEN_RANG = { "Detraktor": 0, "kein erfolgreicher Anruf": 1, "NFT": 2,
 function UrsachenBlock({ befunde }) {
   const [offen, setOffen] = useState(false);
   if (!befunde || !befunde.length) return null;
+  // One-Touch-Befunde tragen keine ATS - der Report liefert keine. Sie stehen
+  // deshalb bei BEIDEN Karten eines Technikers, der in zwei Bereichen
+  // arbeitet. Das gehoert dazugesagt, sonst zaehlt man sie doppelt.
+  const ohneAts = befunde.filter(b => !b.ats).length;
   const sortiert = [...befunde].sort(
     (a, b) => (URSACHEN_RANG[a.einstufung] ?? 9) - (URSACHEN_RANG[b.einstufung] ?? 9));
   const zaehl = (e) => befunde.filter(b => b.einstufung === e).length;
@@ -873,6 +897,12 @@ function UrsachenBlock({ befunde }) {
             </span>
           ) : null)}
       </div>
+      {offen && ohneAts > 0 ? (
+        <div style={{ fontSize: 9.5, color: "#6b7280", marginTop: 6, fontStyle: "italic" }}>
+          {ohneAts} davon ohne ATS-Angabe (One Touch liefert keine) - die stehen bei
+          jeder Karte dieses Technikers.
+        </div>
+      ) : null}
       {offen && sortiert.map((b, i) => {
         const f = URSACHEN_FARBE[b.einstufung] || URSACHEN_FARBE["Passiv"];
         return (
@@ -1756,6 +1786,7 @@ export default function KPIAgent() {
   // Gespeichert wird der NAMENSSCHLUESSEL, nicht der Name: sonst greift der
   // Filter im One-Touch-Reiter nicht, wo er "Kheder Adil" heisst.
   const [nurTechniker, setNurTechniker] = useState("");
+  const [datenAlt, setDatenAlt] = useState(false);
   const [nurKritisch, setNurKritisch] = useState(false);
   const [showVerlauf, setShowVerlauf] = useState(null);
   const [uploadPeriod, setUploadPeriod] = useState(null); // { von, bis, kw, label }
@@ -1766,7 +1797,13 @@ export default function KPIAgent() {
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) setGespeichert(JSON.parse(saved));
+      if (saved) {
+        setGespeichert(JSON.parse(saved));
+        // Aelterer Stand? Dann wurde er mit einem Einlesen erzeugt, das Fehler
+        // hatte. Nicht heimlich weiterrechnen - sagen.
+        const v = parseInt(localStorage.getItem(VERSION_KEY) || "1", 10);
+        if (v !== DATEN_VERSION && Object.keys(JSON.parse(saved)).length) setDatenAlt(true);
+      }
       const savedK = localStorage.getItem(KONTAKTE_KEY);
       if (savedK) setKontakte(JSON.parse(savedK));
       const savedB = localStorage.getItem(BASELINE_KEY);
@@ -1894,6 +1931,9 @@ export default function KPIAgent() {
       setAktiveKategorie(quelle);
       setAiAnalysis(""); setMassnahmen([]); setMassnahmenFehler(null); setTechBewertungen({});
       setActiveTab("dashboard"); setError("");
+      // Frisch eingelesen - also mit der jetzigen Fassung.
+      try { localStorage.setItem(VERSION_KEY, String(DATEN_VERSION)); } catch (e) {}
+      setDatenAlt(false);
     }
   }, [loading, gespeichert]);
 
@@ -2349,7 +2389,27 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
                 {tech.cc_rate !== null && tech.cc_rate !== undefined && (() => { const z = (String(tech.standort)==="5336"?baselines.fs5336:baselines.fs5335).cc_rate; const s = getStatus(tech.cc_rate, z); const c = s==="kritisch"?"#f87171":s==="warnung"?"#fbbf24":"#4ade80"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>CC {tech.cc_rate.toFixed(1)}% / &gt;={z}%</span>; })()}
                 {tech.termintreue !== null && tech.termintreue !== undefined && (() => { const z = (String(tech.standort)==="5336"?baselines.fs5336:baselines.fs5335).termintreue; const s = getStatus(tech.termintreue, z); const c = s==="kritisch"?"#f87171":s==="warnung"?"#fbbf24":"#4ade80"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>TT {tech.termintreue.toFixed(1)}% / &gt;={z}%</span>; })()}
                 {tech.loesungsquote !== null && tech.loesungsquote !== undefined && (() => { const z = (String(tech.standort)==="5336"?baselines.fs5336:baselines.fs5335).loesungsquote; const s = getStatus(tech.loesungsquote, z); const c = s==="kritisch"?"#f87171":s==="warnung"?"#fbbf24":"#4ade80"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>LQ {tech.loesungsquote.toFixed(1)}% / &gt;={z}%</span>; })()}
-                {(() => { const b = String(tech.standort)==="5336"?baselines.fs5336:baselines.fs5335; const kand = [[tech.nps, b.nps ?? 67], [tech.nps_pb, b.nps_pb ?? 67], [tech.nps_montage, b.nps_montage ?? 67]].find(([v]) => v !== null && v !== undefined && !isNaN(v)); if (!kand) return null; const [nv, z] = kand; const s = getNPSStatus(nv, z); const c = s==="kritisch"?"#f87171":s==="warnung"?"#fbbf24":"#4ade80"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>NPS {nv.toFixed(0)} / &gt;={z}</span>; })()}
+                {/* SIEBTE Stelle mit eigener Regel. Vorher: der erstbeste Wert
+                    aus [nps, nps_pb, nps_montage] gegen 67, ohne Mindestmenge -
+                    und an erster Stelle stand ausgerechnet NPS SCHALTEN, die
+                    einzige NPS-Zahl OHNE Telekom-Zielwert. Jetzt nur die zwei
+                    Kennzahlen, die einen Zielwert haben, und nur wenn genug
+                    Rueckmeldungen dahinterstehen. */}
+                {(() => {
+                  const b = String(tech.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
+                  const kand = [
+                    [tech.nps_pb, b.nps_pb ?? 68, tech.anzahl_nps_pb, "PB"],
+                    [tech.nps_montage, b.nps_montage ?? 68, tech.anzahl_nps_montage, "Montage"],
+                  ].find(([v, z, m]) => v !== null && v !== undefined && !isNaN(v)
+                    && getNPSStatus(v, z, m) !== null);
+                  if (!kand) return null;
+                  const [nv, z, m, was] = kand;
+                  const st = getNPSStatus(nv, z, m);
+                  const c = st === "kritisch" ? "#f87171" : st === "warnung" ? "#fbbf24" : "#4ade80";
+                  return <span title={`NPS ${was} aus ${m} Rueckmeldungen`}
+                    style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>
+                    NPS {was} {nv.toFixed(0)} / &gt;={z}</span>;
+                })()}
                 {tech.a1 !== null && tech.a1 !== undefined && (() => { const c = tech.a1>=60?"#4ade80":tech.a1>=45?"#fbbf24":"#f87171"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>A1 {tech.a1.toFixed(1)}% / &gt;={OT_BASELINE.a1}%</span>; })()}
                 {tech.nftq_b !== null && tech.nftq_b !== undefined && (() => { const c = tech.nftq_b<=4?"#4ade80":tech.nftq_b<=8?"#fbbf24":"#f87171"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>NFTQ-B {tech.nftq_b.toFixed(1)}%</span>; })()}
                 {tech.nftq_s !== null && tech.nftq_s !== undefined && (() => { const c = tech.nftq_s<=4?"#4ade80":tech.nftq_s<=8?"#fbbf24":"#f87171"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>NFTQ-S {tech.nftq_s.toFixed(1)}%</span>; })()}
@@ -2416,6 +2476,34 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
       />}
       {showVerlauf && <VerlaufPanel techName={showVerlauf} archiv={archiv} onClose={() => setShowVerlauf(null)} />}
       {showArchiv && <ArchivPanel archiv={archiv} onDelete={(idx) => setArchiv(prev => prev.filter((_, i) => i !== idx))} onClose={() => setShowArchiv(false)} />}
+
+      {/* Alte Daten im Speicher - die auffaelligste Stelle, die es gibt.
+          Wer das uebersieht, sucht den Fehler in der Datei, obwohl er im
+          Browser liegt. */}
+      {datenAlt && (
+        <div style={{ background: "#2e1f00", borderBottom: "2px solid #b45309", padding: "10px 16px",
+          display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 12, color: "#fbbf24", fontWeight: 700 }}>
+            Die gespeicherten Zahlen stammen aus einer aelteren Fassung
+          </span>
+          <span style={{ fontSize: 11, color: "#d1d5db", maxWidth: 620, lineHeight: 1.5 }}>
+            Sie wurden eingelesen, als der Agent "0 Rueckmeldungen" noch als "unbekannt"
+            gespeichert hat - dadurch bewertet er Techniker, ueber die es gar keine
+            Rueckmeldung gibt. Die CSV-Dateien auf deinem Rechner sind in Ordnung; nur
+            was hier liegt, ist es nicht. Einmal neu hochladen, dann stimmt es.
+          </span>
+          <label style={{ background: "#b45309", color: "#fff", padding: "6px 12px", borderRadius: 6,
+            cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
+            Report-CSVs neu laden
+            <input type="file" multiple accept=".csv,.xlsx,.xls" onChange={handleFile} style={{ display: "none" }} />
+          </label>
+          <button onClick={() => setDatenAlt(false)}
+            style={{ background: "none", border: "1px solid #78350f", color: "#9ca3af",
+              padding: "6px 10px", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>
+            Spaeter
+          </button>
+        </div>
+      )}
 
       {/* KPI Warnungsleiste */}
       {(() => {
@@ -2661,7 +2749,14 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
                   const vorTechs = archiv.length > 0 ? Object.values(archiv[archiv.length-1].daten).flat() : [];
                   const vorperiode = vorTechs.find(v => v.name === t.name) || null;
                   return <TechCard key={i} tech={t} baselines={baselines} vorperiode={vorperiode}
-                    ursachen={(ursachen || []).filter(u => namensSchluessel(u.name) === namensSchluessel(t.name))} />;
+                    ursachen={(ursachen || []).filter(u => {
+                      if (namensSchluessel(u.name) !== namensSchluessel(t.name)) return false;
+                      // Alae arbeitet in ATS 35 UND 36 - er hat zwei Karten.
+                      // Ohne diese Pruefung standen auf beiden dieselben 15
+                      // Befunde, auch die aus dem jeweils anderen Bereich.
+                      if (!u.ats || !t.standort) return true;
+                      return String(t.standort).endsWith(String(u.ats));  // 5335 endet auf 35
+                    })} />;
                 })}</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <button onClick={runAnalysis} disabled={loading}
