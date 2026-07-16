@@ -670,19 +670,36 @@ function KPIBar({ value, baseline, label, trend }) {
   );
 }
 
-function NFTQBar({ value, label, ziel, warn }) {
-  if (value === null || isNaN(value)) return null;
-  const z = ziel || 4;
-  const w = warn || 8;
-  const color = value > w ? "#f87171" : value > z ? "#fbbf24" : "#4ade80";
+// SECHSTE Stelle, die selbst geurteilt hat. Vorher stand hier
+// "const z = ziel || 4; const w = warn || 8" - und weil NIEMAND ziel/warn
+// uebergeben hat, faerbte der Balken alle vier Kategorien nach dem pauschalen
+// 4/8. Auch die Bereitstellung, die wir ueberall sonst nicht bewerten: Adil
+// Kheder hatte einen knallroten Balken bei 18,18 % fuer eine Kennzahl, die
+// dieselben Nachfolgetickets doppelt zaehlt.
+// Jetzt rechnet der Balken NICHT mehr - er bekommt den Status fertig geliefert.
+function NFTQBar({ value, label, status, menge, hinweis }) {
+  if (value === null || value === undefined || isNaN(value)) return null;
+  const color = status === "kritisch" ? "#f87171" : status === "warnung" ? "#fbbf24"
+              : status === "gut" ? "#4ade80" : "#6b7280";
   return (
-    <div style={{ marginBottom: 6 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#9ca3af", marginBottom: 2 }}>
-        <span>{label}</span><span style={{ color }}>{value.toFixed(2)}%</span>
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#9ca3af", marginBottom: 2, gap: 8 }}>
+        <span>
+          {label}
+          {/* Die Basis gehoert neben die Quote: "22,22 %" sagt wenig,
+              "4 von 18" sagt alles. */}
+          {menge !== null && menge !== undefined ? <span style={{ color: "#4b5563" }}> ({menge} Auftraege)</span> : null}
+        </span>
+        <span style={{ color, fontWeight: status ? 700 : 400, whiteSpace: "nowrap" }}>{value.toFixed(2)}%</span>
       </div>
       <div style={{ background: "#1f2937", borderRadius: 2, height: 6 }}>
-        <div style={{ width: `${Math.min(100, value * 4)}%`, background: color, height: "100%", borderRadius: 2 }} />
+        <div style={{ width: `${Math.min(100, value * 4)}%`,
+          // Ohne Urteil auch kein farbiger Balken - sonst sieht Grau nach Gut aus.
+          background: status ? color : "#374151", height: "100%", borderRadius: 2 }} />
       </div>
+      {!status && hinweis ? (
+        <div style={{ fontSize: 9.5, color: "#6b7280", marginTop: 2, fontStyle: "italic" }}>{hinweis}</div>
+      ) : null}
     </div>
   );
 }
@@ -713,22 +730,18 @@ function TechCard({ tech, baselines, vorperiode, ursachen }) {
   const isOT = tech.a1 != null || tech.a_ges != null || tech.a0 != null || tech.quelle === "onetouch";
   const isNFTQ = [tech.nftq_b, tech.nftq_s, tech.nftq_m, tech.nftq_p].some(v => v != null) || tech.quelle === "nftq";
   const isSMS = tech.cc_rate != null || tech.termintreue != null || tech.loesungsquote != null || tech.nps != null || tech.nps_montage != null || tech.nps_pb != null;
-  const _stat = [];
-  if (isOT) _stat.push(getOTStatus(tech));
-  if (isNFTQ) {
-    // VIERTE Stelle, die frueher selbst gerechnet hat - wieder pauschal 4/8 fuer
-    // alle vier Spalten, NFTQ-B eingeschlossen. Jetzt dieselbe Regel wie ueberall.
-    nftqStatusListe(tech, bl).forEach(x => _stat.push(x));
-  }
-  if (isSMS) {
-    if (tech.cc_rate != null) _stat.push(getStatus(tech.cc_rate, bl.cc_rate));
-    if (tech.termintreue != null) _stat.push(getStatus(tech.termintreue, bl.termintreue));
-    if (tech.loesungsquote != null) _stat.push(getStatus(tech.loesungsquote, bl.loesungsquote));
-    if (tech.nps != null) _stat.push(getNPSStatus(tech.nps, bl.nps ?? 67));
-    if (tech.nps_montage != null) _stat.push(getNPSStatus(tech.nps_montage, bl.nps_montage ?? 67));
-    if (tech.nps_pb != null) _stat.push(getNPSStatus(tech.nps_pb, bl.nps_pb ?? 67));
-  }
-  const worst = _stat.includes("kritisch") ? "kritisch" : _stat.includes("warnung") ? "warnung" : "gut";
+  // Die Karte RECHNET NICHT MEHR. Sie fragt dieselbe Funktion wie die Zaehlung
+  // oben ("Kritisch: 6") und die Massnahmenliste.
+  //
+  // Warum das noetig war: Hier stand eine eigene Kopie der Regeln - und die war
+  // beim Aufraeumen nur halb erwischt. Ergebnis bei Adil Kheder (Schalten,
+  // KW28): Das Schild sagte KRITISCH, die Zaehlung daneben sagte "Kritisch: 0",
+  // und auf der Karte war nichts rot. Die Karte bewertete noch NPS Schalten
+  // (-100 aus EINER Bewertung), was es nirgends sonst mehr tut.
+  //
+  // Wer hier kuenftig eine Bedingung braucht: NICHT nachbauen, sondern
+  // techWorst() erweitern. Eine Regel, ein Ergebnis.
+  const worst = techWorst(tech, baselines);
   const borderColor = worst === "kritisch" ? "#7f1d1d" : worst === "warnung" ? "#78350f" : "#14532d";
   const quelleLabel = { smsfeedback: "SMS-Feedback", smsfeedbackschalten: "Schalten", nftq: "NFTQ", standard: "Manuell", onetouch: "OneTouch", alle: "Alle" }[tech.quelle] || "";
   const npsStatus = tech.nps !== null ? getNPSStatus(tech.nps) : null;
@@ -765,10 +778,20 @@ function TechCard({ tech, baselines, vorperiode, ursachen }) {
             <span>P: <strong style={{ color: "#9ca3af" }}>{tech.menge_p ?? "-"}</strong></span>
           </div>
         )}
-        <NFTQBar value={tech.nftq_b} label="Bereitstellung" />
-        <NFTQBar value={tech.nftq_s} label="Schalten" />
-        <NFTQBar value={tech.nftq_m} label="Montage" />
-        <NFTQBar value={tech.nftq_p} label="Problembehebung" />
+        {/* Der Status kommt aus derselben Funktion wie ueberall sonst.
+            Bereitstellung bekommt bewusst KEINEN - mit Begruendung darunter,
+            damit niemand denkt, da sei etwas vergessen worden. */}
+        <NFTQBar value={tech.nftq_b} label="Bereitstellung" menge={tech.menge_b} status={null}
+          hinweis="ohne Urteil: Bereitstellung = Schalten + Montage, zaehlt dieselben Nachfolgetickets nochmal. Telekom gibt dafuer keinen Zielwert vor." />
+        <NFTQBar value={tech.nftq_s} label="Schalten" menge={tech.menge_s}
+          status={getNFTQStatus(tech.nftq_s, bl.nftq_schalten ?? 6.6, 10, tech.menge_s)}
+          hinweis={`unter ${MINDEST_NFTQ} Auftraegen - daraus laesst sich nichts ablesen`} />
+        <NFTQBar value={tech.nftq_m} label="Montage" menge={tech.menge_m}
+          status={getNFTQStatus(tech.nftq_m, bl.nftq_montage ?? 4, 8, tech.menge_m)}
+          hinweis={`unter ${MINDEST_NFTQ} Auftraegen - daraus laesst sich nichts ablesen`} />
+        <NFTQBar value={tech.nftq_p} label="Problembehebung" menge={tech.menge_p}
+          status={getNFTQStatus(tech.nftq_p, bl.nftq_pb ?? 8.5, 12, tech.menge_p)}
+          hinweis={`unter ${MINDEST_NFTQ} Auftraegen - daraus laesst sich nichts ablesen`} />
       </>)}
       {isSMS && (<>
         <KPIBar value={tech.cc_rate} baseline={bl.cc_rate} label="CC-Rate"
@@ -920,7 +943,10 @@ function berichtText(name, meine, tech, bl) {
   // der Grund. Beides gehoert in eine Mail.
   if (tech && bl) {
     const zeilen = [];
-    const wort = { gut: "im Ziel", warnung: "Warnung", kritisch: "kritisch" };
+    // GROSSBUCHSTABEN, nicht "kritisch": Farbe kann jedes Mailprogramm
+    // wegwerfen, Grossbuchstaben nicht. Der Techniker muss die Stelle auch
+    // dann finden, wenn die Mail als nackter Text bei ihm ankommt.
+    const wort = { gut: "im Ziel", warnung: "WARNUNG", kritisch: "KRITISCH" };
     const f = (v) => (v === null || v === undefined || isNaN(v)) ? null : v.toFixed(1).replace(".", ",");
     const nimm = (label, wert, status, basis) => {
       if (wert === null) return;
@@ -1037,8 +1063,11 @@ function berichtAlsHtml(text) {
     // Ueberschriften des Berichts fett - erkennbar an Grossbuchstaben am Zeilenanfang
     .replace(/^(DEINE ZAHLEN[^\n]*|GUT GELAUFEN[^\n]*|UNZUFRIEDENE KUNDEN[^\n]*|NACHFOLGETICKETS[^\n]*|AUFTRAEGE OHNE[^\n]*)$/gm,
       '<b style="color:#111">$1</b>')
-    .replace(/\bkritisch\b/g, '<span style="color:#c00;font-weight:bold">kritisch</span>')
-    .replace(/\bWarnung\b/g, '<span style="color:#b26b00;font-weight:bold">Warnung</span>')
+    // Farbe UND Fettschrift UND Grossbuchstaben - drei Wege zum selben Ziel.
+    // Faellt einer aus (Schwarzweissdruck, Mailprogramm ohne HTML, Rotblindheit
+    // - das betrifft jeden zwoelften Mann), tragen die anderen zwei.
+    .replace(/\bKRITISCH\b/g, '<span style="color:#c00;font-weight:900;font-size:1.08em;letter-spacing:0.5px">KRITISCH</span>')
+    .replace(/\bWARNUNG\b/g, '<span style="color:#b26b00;font-weight:900;letter-spacing:0.5px">WARNUNG</span>')
     .replace(/\bim Ziel\b/g, '<span style="color:#1b7a2f;font-weight:bold">im Ziel</span>')
     .replace(/\n/g, "<br>");
 }
