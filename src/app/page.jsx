@@ -737,6 +737,205 @@ function UrsachenBlock({ befunde }) {
   );
 }
 
+
+// ---------------------------------------------------------------------------
+// Reiter "Berichte": ein Techniker pro Seite - zum Lesen, Ausdrucken und
+// Verschicken. Bewusst getrennt von der Technikerkarte: dort stehen Zahl und
+// Grund nebeneinander zum Ueberblicken, hier ist es ein Blatt fuer EIN
+// Gespraech. Arash geht damit zum Monteur, nicht ans Dashboard.
+//
+// ZUM PDF: Der Browser kann keine Datei an eine Mail haengen - das verbietet
+// jeder Browser aus Sicherheitsgruenden, das ist keine Bequemlichkeit meinerseits.
+// Deshalb: "Als PDF" oeffnet den Druckdialog (dort "Als PDF speichern"), die
+// Mail wird getrennt vorbereitet, und der Anhang kommt per Hand dran. Zwei
+// Klicks statt keiner - aber ehrlich.
+// ---------------------------------------------------------------------------
+function berichtText(name, meine, tech, bl, firma) {
+  // Der Mailtext wird aus den ECHTEN Befunden gebaut, nicht aus Textbausteinen.
+  // "Sofortgespraech mit der Leitstelle" sagt einem Monteur nichts. "Auftrag
+  // 200097251077 am 09.07., Kunde schreibt: Mehrere Anlaeufe" sagt ihm alles.
+  const detr = meine.filter(b => b.einstufung === "Detraktor");
+  const nft = meine.filter(b => b.einstufung === "NFT");
+  const ohne = meine.filter(b => b.einstufung === "kein erfolgreicher Anruf");
+  const gut = meine.filter(b => b.einstufung === "Promotor");
+  const z = [];
+  z.push(`Hallo ${name.split(" ")[0]},`);
+  z.push("");
+  z.push("hier deine Rueckmeldung aus dem Auftragsinfo-Portal.");
+  z.push("");
+  if (gut.length) {
+    z.push(`GUT GELAUFEN: ${gut.length} Kunden haben dich mit 9 oder 10 bewertet.`);
+    const mit = gut.filter(b => b.kundeSagt || b.kundeUeber).slice(0, 2);
+    mit.forEach(b => z.push(`   ${b.datum}: "${(b.kundeSagt || b.kundeUeber).slice(0, 120)}"`));
+    z.push("");
+  }
+  if (detr.length) {
+    z.push(`UNZUFRIEDENE KUNDEN: ${detr.length}`);
+    detr.forEach(b => {
+      z.push(`   ${b.datum}, Auftrag ${b.auftrag} (Bewertung ${b.wert} von 10)`);
+      if (b.kundeSagt) z.push(`      Kunde: "${b.kundeSagt.slice(0, 200)}"`);
+      if (b.weiteres) z.push(`      ${b.weiteres}`);
+    });
+    z.push("");
+  }
+  if (nft.length) {
+    z.push(`NACHFOLGETICKETS: ${nft.length}`);
+    nft.forEach(b => z.push(`   ${b.datum}, Auftrag ${b.auftrag} (${b.kennzahl})`));
+    z.push("");
+  }
+  if (ohne.length) {
+    z.push(`AUFTRAEGE OHNE ERFOLGREICHEN ANRUF: ${ohne.length}`);
+    ohne.slice(0, 5).forEach(b => z.push(`   ${b.datum}, Auftrag ${b.auftrag} - ${b.wert}`));
+    z.push("");
+  }
+  z.push("Lass uns kurz drueber sprechen - besonders ueber die Faelle, bei denen");
+  z.push("du selbst siehst, dass es nicht an dir lag. Die will ich wissen.");
+  z.push("");
+  z.push("Viele Gruesse");
+  return z.join("\n");
+}
+
+function BerichtTab({ ursachen, techs, baselines, kontakte }) {
+  const namen = [...new Set((ursachen || []).map(u => u.name))].sort();
+  const [gewaehlt, setGewaehlt] = useState(namen[0] || "");
+  const [mailOffen, setMailOffen] = useState(false);
+  if (!namen.length) {
+    return (
+      <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8, padding: 24, textAlign: "center" }}>
+        <div style={{ fontSize: 13, color: "#9ca3af", fontWeight: 700 }}>Noch kein Ursachenbericht geladen</div>
+        <div style={{ fontSize: 12, color: "#6b7280", marginTop: 8, lineHeight: 1.6 }}>
+          Im Vikuline OS [A] druecken (oder [W] laufen lassen), dann liegt in<br />
+          <code style={{ color: "#9ca3af" }}>Auftragsinfo_Downloads\Pipeline\</code> eine Datei
+          <code style={{ color: "#9ca3af" }}> &lt;KW&gt;_ursachen.csv</code>.<br />
+          Die hier hochladen - wie die anderen CSVs auch.
+        </div>
+      </div>
+    );
+  }
+  const name = namen.includes(gewaehlt) ? gewaehlt : namen[0];
+  const meine = (ursachen || []).filter(u => u.name === name);
+  const tech = (techs || []).find(t => t.name === name);
+  const bl = tech && String(tech.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
+  const sortiert = [...meine].sort(
+    (a, b) => (URSACHEN_RANG[a.einstufung] ?? 9) - (URSACHEN_RANG[b.einstufung] ?? 9));
+  const zaehl = (e) => meine.filter(b => b.einstufung === e).length;
+  const ats = [...new Set(meine.map(b => b.ats).filter(Boolean))].join(", ");
+  const text = berichtText(name, meine, tech, bl);
+  const kontakt = (kontakte || {})[name] || {};
+  const mailto = `mailto:${kontakt.email || ""}?subject=${encodeURIComponent("Rueckmeldung zu deinen Auftraegen")}&body=${encodeURIComponent(text)}`;
+
+  return (
+    <div>
+      <style>{`@media print {
+        body { background: #fff !important; }
+        .nicht-drucken { display: none !important; }
+        .druckblatt { background: #fff !important; color: #000 !important; border: none !important; }
+        .druckblatt * { color: #000 !important; background: #fff !important; border-color: #999 !important; }
+      }`}</style>
+
+      <div className="nicht-drucken" style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <select value={name} onChange={e => { setGewaehlt(e.target.value); setMailOffen(false); }}
+          style={{ background: "#1f2937", color: "#f9fafb", border: "1px solid #374151", borderRadius: 6, padding: "7px 10px", fontSize: 12 }}>
+          {namen.map(n => <option key={n} value={n}>{n}</option>)}
+        </select>
+        <button onClick={() => window.print()}
+          style={{ background: "#1f2937", color: "#f9fafb", border: "1px solid #374151", borderRadius: 6, padding: "7px 12px", fontSize: 12, cursor: "pointer" }}>
+          Drucken / Als PDF
+        </button>
+        <button onClick={() => setMailOffen(!mailOffen)}
+          style={{ background: "#1e3a5f", color: "#dbeafe", border: "1px solid #2563eb", borderRadius: 6, padding: "7px 12px", fontSize: 12, cursor: "pointer" }}>
+          Mail vorbereiten
+        </button>
+        <span style={{ fontSize: 10, color: "#6b7280" }}>
+          PDF: erst "Als PDF" speichern, dann in der Mail von Hand anhaengen - ein Browser darf das nicht selbst.
+        </span>
+      </div>
+
+      {mailOffen && (
+        <div className="nicht-drucken" style={{ marginBottom: 14, background: "#0f1729", border: "1px solid #1e3a5f", borderRadius: 8, padding: 14 }}>
+          <div style={{ fontSize: 11, color: "#93c5fd", fontWeight: 700, marginBottom: 6 }}>
+            Massnahme und Feedback fuer {name}
+          </div>
+          <textarea readOnly value={text} rows={14}
+            style={{ width: "100%", background: "#111827", color: "#d1d5db", border: "1px solid #374151",
+              borderRadius: 6, padding: 10, fontSize: 11, fontFamily: "monospace", lineHeight: 1.5 }} />
+          <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <a href={mailto} style={{ background: "#2563eb", color: "#fff", borderRadius: 6, padding: "7px 12px",
+              fontSize: 12, textDecoration: "none" }}>In Mailprogramm oeffnen</a>
+            <button onClick={() => navigator.clipboard && navigator.clipboard.writeText(text)}
+              style={{ background: "#1f2937", color: "#f9fafb", border: "1px solid #374151", borderRadius: 6, padding: "7px 12px", fontSize: 12, cursor: "pointer" }}>
+              Text kopieren
+            </button>
+            {!kontakt.email && (
+              <span style={{ fontSize: 10, color: "#fbbf24" }}>
+                Keine Mailadresse hinterlegt - die Mail geht ohne Empfaenger auf. Adressen: Knopf "Kontakte".
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="druckblatt" style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8, padding: "20px 24px" }}>
+        <div style={{ fontSize: 20, fontWeight: 700, color: "#f9fafb" }}>{name}</div>
+        <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 14 }}>
+          Ursachenbericht{ats ? ` · ATS ${ats}` : ""}{tech ? ` · ${tech.auftraege} Auftraege` : ""}
+        </div>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+          {[[meine.filter(b => b.kennzahl === "NPS").length, "Bewertungen"],
+            [zaehl("Detraktor"), "Unzufrieden"],
+            [zaehl("NFT"), "Nachfolgetickets"],
+            [zaehl("kein erfolgreicher Anruf"), "Nicht erreicht"]].map(([z, l]) => (
+            <div key={l} style={{ border: "1px solid #374151", borderRadius: 6, padding: "8px 14px", minWidth: 90 }}>
+              <div style={{ fontSize: 19, fontWeight: 700, color: "#f9fafb" }}>{z}</div>
+              <div style={{ fontSize: 9, color: "#6b7280", textTransform: "uppercase" }}>{l}</div>
+            </div>
+          ))}
+        </div>
+
+        {[["Detraktor", "Unzufriedene Kunden (Bewertung 0-6)",
+           "Die Zahl sagt nicht, woran es lag. Der Text schon."],
+          ["NFT", "Nachfolgetickets",
+           "\"Geloest durch DTA/DTS\" heisst: die Telekom hat den Nachfolgeauftrag selbst erledigt."],
+          ["kein erfolgreicher Anruf", "Auftraege ohne erfolgreichen Anruf",
+           "Mehrere Versuche sprechen fuer den Techniker, ein einziger wirft eine Frage auf."],
+          ["Promotor", "Zufriedene Kunden", ""]].map(([e, titel, hinweis]) => {
+          const liste = sortiert.filter(b => b.einstufung === e);
+          if (!liste.length) return null;
+          const f = URSACHEN_FARBE[e] || URSACHEN_FARBE["Passiv"];
+          return (
+            <div key={e} style={{ marginBottom: 18 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#f9fafb", borderBottom: "1px solid #374151", paddingBottom: 5, marginBottom: 4 }}>{titel}</div>
+              {hinweis ? <div style={{ fontSize: 10, color: "#6b7280", marginBottom: 8 }}>{hinweis}</div> : null}
+              {liste.map((b, i) => (
+                <div key={i} style={{ background: f.bg, borderLeft: `3px solid ${f.rand}`, borderRadius: 4, padding: "8px 10px", marginBottom: 6 }}>
+                  <div style={{ fontSize: 10, color: "#6b7280", fontFamily: "monospace" }}>
+                    {b.datum}{b.ats ? ` · ATS ${b.ats}` : ""} · {b.bereich}
+                    {b.auftrag ? ` · ${b.auftrag}` : ""}{b.wert ? ` · ${b.kennzahl}: ${b.wert}` : ""}
+                  </div>
+                  {[["Kunde", b.kundeSagt], ["Kunde über den Techniker", b.kundeUeber],
+                    ["Techniker (Abschlussvermerk)", b.technikerSagt]].map(([wer, txt]) => txt ? (
+                    <div key={wer} style={{ marginTop: 5, borderLeft: "2px solid #374151", paddingLeft: 8 }}>
+                      <div style={{ fontSize: 9, color: "#4b5563", textTransform: "uppercase", fontWeight: 700 }}>{wer}</div>
+                      <div style={{ fontSize: 12, color: "#d1d5db", fontStyle: "italic" }}>{txt}</div>
+                    </div>
+                  ) : null)}
+                  {b.weiteres ? <div style={{ marginTop: 4, fontSize: 10, color: "#6b7280" }}>{b.weiteres}</div> : null}
+                </div>
+              ))}
+            </div>
+          );
+        })}
+
+        <div style={{ marginTop: 20, paddingTop: 10, borderTop: "1px solid #374151", fontSize: 9, color: "#4b5563" }}>
+          Quelle: Auftragsinfo-Portal der Telekom. Enthaelt Kundentexte im Klartext -
+          nach dem Gespraech loeschen (Telekom-Vorgabe: sobald der Zweck der Auswertung erfuellt ist).
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function renderMarkdown(text) {
   return text
     .replace(/<MASSNAHMEN>[\s\S]*?<\/MASSNAHMEN>/g, "")
@@ -1874,6 +2073,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
                 { id: "dashboard", label: "Dashboard" },
                 { id: "firmendashboard", label: ` Firmendashboard${Object.keys(techBewertungen).length > 0 ? ` (${Object.keys(techBewertungen).length})` : ""}` },
                 { id: "analyse", label: "KI-Analyse" + (aiAnalysis ? " ok" : "") },
+                { id: "berichte", label: "Berichte" + (ursachen.length ? ` (${new Set(ursachen.map(u => u.name)).size})` : "") },
               ].map(tab => (
                 <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                   style={{ background: "none", border: "none", borderBottom: activeTab === tab.id ? "2px solid #3b82f6" : "2px solid transparent", color: activeTab === tab.id ? "#f9fafb" : "#6b7280", padding: "8px 14px", cursor: "pointer", fontSize: 12, fontWeight: activeTab === tab.id ? 600 : 400, marginBottom: -1, whiteSpace: "nowrap" }}>
@@ -1907,6 +2107,10 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
               </>
             )}
 
+            {activeTab === "berichte" && (
+              <BerichtTab ursachen={ursachen} techs={angezeigt} baselines={baselines}
+                kontakte={kontakte} />
+            )}
             {activeTab === "firmendashboard" && <FirmendashboardTab />}
 
             {activeTab === "analyse" && (
