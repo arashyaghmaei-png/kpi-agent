@@ -2350,11 +2350,31 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
           </div>
         )}
 
-        {hatDaten && angezeigt.length === 0 && ursachen.length === 0 && (
-          <div style={{ textAlign: "center", padding: "40px 20px" }}>
-            <div style={{ fontSize: 14, color: "#6b7280", marginBottom: 16 }}>Noch keine Daten für "{KATEGORIEN.find(k => k.id === aktiveKategorie)?.label}"</div>
+        {/* Diese Kachel MUSS auch erscheinen, wenn nur der Ursachenbericht
+            geladen ist. Vorher stand hier "ursachen.length === 0" - damit war
+            in genau dem Fall (Befunde da, Kennzahlen weg) KEIN Hochlade-Knopf
+            mehr auf der Seite ausser dem kleinen in der Kopfleiste. Arash sah
+            nur noch "Team-Analyse starten" und kam nicht mehr weiter. */}
+        {angezeigt.length === 0 && (hatDaten || ursachen.length > 0) && (
+          <div style={{ textAlign: "center", padding: "40px 20px", background: "#111827",
+            border: "1px solid #1f2937", borderRadius: 8, marginBottom: 16 }}>
+            <div style={{ fontSize: 14, color: "#f9fafb", fontWeight: 700, marginBottom: 6 }}>
+              {ursachen.length > 0 && !hatDaten
+                ? "Kennzahlen fehlen - der Ursachenbericht ist da"
+                : `Noch keine Daten für "${KATEGORIEN.find(k => k.id === aktiveKategorie)?.label}"`}
+            </div>
+            {ursachen.length > 0 && !hatDaten && (
+              <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 16, lineHeight: 1.6 }}>
+                Die Berichte je Techniker stehen im Reiter <b style={{ color: "#9ca3af" }}>Berichte</b> - die
+                brauchen keine Kennzahlen.<br />
+                Für Dashboard, KI-Analyse und den Zahlen-Teil der Mail fehlen die vier Report-CSVs
+                aus <code style={{ color: "#9ca3af" }}>Auftragsinfo_Downloads\&lt;KW&gt;\</code>:<br />
+                <span style={{ color: "#9ca3af" }}>_sms_feedback · _sms_feedback_schalten · _nftq · _one_touch</span><br />
+                Keine Datei mit <code style={{ color: "#9ca3af" }}>_details</code> im Namen - die gehören nicht hierher.
+              </div>
+            )}
             <label style={{ display: "inline-block", background: "#1d4ed8", color: "#fff", padding: "10px 24px", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
-               Export hochladen
+              Report-CSVs hochladen (mehrere auf einmal)
               <input type="file" multiple accept=".csv,.xlsx,.xls" onChange={handleFile} style={{ display: "none" }} />
             </label>
           </div>
