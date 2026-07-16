@@ -199,6 +199,12 @@ MINDESTMENGEN (Vikuline-Regel, keine Telekom-Vorgabe - so aber sagen):
   "22,2%". Eine Quote ohne ihre Basis ist im Gespraech mit dem Monteur wertlos.
 - Bei einem Extremwert aus wenigen Faellen: sag ausdruecklich, dass er auf
   wenigen Faellen beruht, statt ihn als Befund zu verkaufen.
+- Die Basis steht in den Daten hinter jedem Wert. Steht dort "unbekannt", dann
+  ist sie UNBEKANNT - schreibe das so und erfinde keine Zahl. "unbekannt" ist
+  NICHT dasselbe wie "0 Rueckmeldungen": bei 0 gibt es nichts zu bewerten, bei
+  unbekannt weisst du es schlicht nicht.
+- Ein Wert "-" heisst: fuer diese Kennzahl wurde nichts geliefert. Das ist kein
+  schlechter Wert und keine Null - dazu sagst du gar nichts.
 
 OneTouch (im Agenten hinterlegt; ob Telekom dafuer ZW vorgibt, ist UNGEPRUEFT -
 also nicht als Telekom-Vorgabe darstellen):
@@ -1788,6 +1794,11 @@ export default function KPIAgent() {
   const [nurTechniker, setNurTechniker] = useState("");
   const [datenAlt, setDatenAlt] = useState(false);
   const [nurKritisch, setNurKritisch] = useState(false);
+  // Die KI-Analyse ist eine Momentaufnahme - sie rechnet nicht mit, wenn man
+  // danach filtert. Arash sah eine Analyse ueber DREI Techniker, waehrend das
+  // Dashboard ACHT zeigte, und nichts sagte ihm das. Deshalb merken wir uns,
+  // worauf sie lief, und vergleichen es mit dem, was gerade eingestellt ist.
+  const [analyseBasis, setAnalyseBasis] = useState(null);
   const [showVerlauf, setShowVerlauf] = useState(null);
   const [uploadPeriod, setUploadPeriod] = useState(null); // { von, bis, kw, label }
   const [showPeriodDialog, setShowPeriodDialog] = useState(false);
@@ -2178,10 +2189,17 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
   const runAnalysis = async () => {
     if (!angezeigt.length) return;
     setLoading(true); setError(""); setAiAnalysis(""); setMassnahmen([]); setMassnahmenFehler(null);
+    setAnalyseBasis({ anzahl: angezeigt.length, kategorie: aktiveKategorie, techniker: nurTechniker });
+    // DIE MENGEN MUESSEN MIT. Vorher standen hier nur die Quoten - die
+    // Mindestmengenregel steht im Prompt, aber ohne die Zahlen dahinter musste
+    // die KI raten. Sie schrieb dann "Basis unbekannt" und erfand "0
+    // Rueckmeldungen". Eine Quote ohne ihre Basis ist genau die halbe Wahrheit,
+    // gegen die dieses Projekt gebaut ist.
+    const m = (v) => (v === null || v === undefined ? "unbekannt" : String(v));
     const dataStr = angezeigt.map(t => {
       if (t.quelle === "onetouch") return `${t.name} (FS${t.standort}): A-Ges=${t.a_ges?.toFixed(1) ?? "-"}%, A1=${t.a1?.toFixed(1) ?? "-"}%, AX=${t.ax?.toFixed(1) ?? "-"}%, A0=${t.a0?.toFixed(1) ?? "-"}%, Aufträge=${t.auftraege}`;
-      if (t.quelle === "nftq") return `${t.name} (FS${t.standort}): NFTQ-B=${t.nftq_b?.toFixed(2) ?? "-"}%, NFTQ-S=${t.nftq_s?.toFixed(2) ?? "-"}%, NFTQ-M=${t.nftq_m?.toFixed(2) ?? "-"}%, NFTQ-P=${t.nftq_p?.toFixed(2) ?? "-"}%, Aufträge=${t.auftraege}`;
-      return `${t.name} (FS${t.standort}): CC=${t.cc_rate?.toFixed(1) ?? "-"}%, Termintreue=${t.termintreue?.toFixed(1) ?? "-"}%, Lösungsquote=${t.loesungsquote?.toFixed(1) ?? "-"}%, NPS-Montage=${t.nps_montage?.toFixed(0) ?? "-"}, NPS-PB=${t.nps_pb?.toFixed(0) ?? "-"}, NPS-Schalten=${t.nps?.toFixed(0) ?? "-"}, Aufträge=${t.auftraege}`;
+      if (t.quelle === "nftq") return `${t.name} (FS${t.standort}): NFTQ-B=${t.nftq_b?.toFixed(2) ?? "-"}% (Basis ${m(t.menge_b)} Aufträge), NFTQ-S=${t.nftq_s?.toFixed(2) ?? "-"}% (Basis ${m(t.menge_s)}), NFTQ-M=${t.nftq_m?.toFixed(2) ?? "-"}% (Basis ${m(t.menge_m)}), NFTQ-P=${t.nftq_p?.toFixed(2) ?? "-"}% (Basis ${m(t.menge_p)}), Aufträge gesamt=${t.auftraege}`;
+      return `${t.name} (FS${t.standort}): CC=${t.cc_rate?.toFixed(1) ?? "-"}%, Termintreue=${t.termintreue?.toFixed(1) ?? "-"}%, Lösungsquote=${t.loesungsquote?.toFixed(1) ?? "-"}%, NPS-Montage=${t.nps_montage?.toFixed(0) ?? "-"} (aus ${m(t.anzahl_nps_montage)} Rückmeldungen), NPS-PB=${t.nps_pb?.toFixed(0) ?? "-"} (aus ${m(t.anzahl_nps_pb)} Rückmeldungen), NPS-Schalten=${t.nps?.toFixed(0) ?? "-"} (aus ${m(t.anzahl_nps)} Rückmeldungen), Aufträge=${t.auftraege}`;
     }).join("\n");
     // Letzte archivierte KW fuer Vergleich
     let vorperiodeStr = "";
@@ -2781,6 +2799,28 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
             )}
             {activeTab === "firmendashboard" && <FirmendashboardTab />}
 
+            {/* Warnung, wenn die gezeigte Analyse zu einer anderen Auswahl
+                gehoert als der, die gerade eingestellt ist. Eine alte Analyse
+                sieht genauso aus wie eine frische - man erkennt es nur an den
+                Zahlen darin, und die liest niemand gegen. */}
+            {activeTab === "analyse" && aiAnalysis && analyseBasis
+              && (analyseBasis.anzahl !== angezeigt.length
+                || analyseBasis.kategorie !== aktiveKategorie
+                || analyseBasis.techniker !== nurTechniker) && (
+              <div style={{ background: "#2e1f00", border: "1px solid #78350f", borderRadius: 8,
+                padding: "10px 14px", marginBottom: 12, fontSize: 12, color: "#fbbf24" }}>
+                <b>Diese Analyse gehoert zu einer anderen Auswahl.</b><br />
+                <span style={{ color: "#d1d5db", fontSize: 11 }}>
+                  Gerechnet wurde ueber {analyseBasis.anzahl} Techniker
+                  ({KATEGORIEN.find(k => k.id === analyseBasis.kategorie)?.label || analyseBasis.kategorie}
+                  {analyseBasis.techniker ? ", ein Techniker gefiltert" : ""}).
+                  Jetzt eingestellt: {angezeigt.length} Techniker
+                  ({KATEGORIEN.find(k => k.id === aktiveKategorie)?.label || aktiveKategorie}
+                  {nurTechniker ? ", ein Techniker gefiltert" : ""}).
+                  Die KI rechnet nicht mit - im Dashboard "Team-Analyse starten" druecken.
+                </span>
+              </div>
+            )}
             {activeTab === "analyse" && (
               <div>
                 {!aiAnalysis && !loading && <div style={{ textAlign: "center", padding: "40px", color: "#6b7280" }}>Noch keine Analyse. Dashboard öffnen und starten.</div>}
