@@ -1003,7 +1003,14 @@ function TechCard({ tech, baselines, vorperiode, ursachen }) {
             trend={vorperiode ? getTrend(tech.cc_rate, vorperiode.cc_rate) : null} />
           <KPIKachel label="Termintreue" k={kpiAusU(tech, "termintreue")} hoch
             trend={vorperiode ? getTrend(tech.termintreue, vorperiode.termintreue) : null} />
-          <KPIKachel label="Lösungsquote Bereitstellung" k={{ wert: tech.loesungsquote, menge: null, ampel: null, ziel: null, schwelle: null, grund: "[U] liest sie noch nicht - kein Urteil" }} hoch />
+          {/* zielUnbekannt, NICHT "kein Telekom-Zielwert": Der Vertrag nennt
+              fuer die Loesungsquote Bereitstellung sehr wohl 95,0 % - [U]
+              liest die Spalte "Erledigt B" nur noch nicht. Ohne das Merkmal
+              behauptete die Kachel auf JEDER Karte, es gaebe keinen Zielwert,
+              und widersprach damit ihrer eigenen zweiten Zeile.
+              Sobald [U] die Spalte liest, kommt die Kachel ueber die
+              Uebersicht wie alle anderen und diese Sonderzeile faellt weg. */}
+          <KPIKachel label="Lösungsquote Bereitstellung" k={{ wert: tech.loesungsquote, menge: null, ampel: null, ziel: null, schwelle: null, zielUnbekannt: true, grund: "[U] liest sie noch nicht - kein Urteil" }} hoch />
           {[["nps_montage", "NPS Montage"], ["nps_pb", "NPS Problembehebung"],
             ["nps_schalten", "NPS Schalten"]].map(([id, label]) => (
             <KPIKachel key={id} label={label} k={kpiAusU(tech, id)} hoch einheit="" />
