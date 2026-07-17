@@ -671,8 +671,17 @@ function uebersichtIndex(zeilen) {
 // Liefert immer ein Objekt - nie undefined -, damit die Aufrufer nicht jedes
 // Mal pruefen muessen. Fehlt die Uebersicht, ist ampel null und grund sagt,
 // warum: dann zeigt der Agent Zahlen ohne Urteil, statt sich eines auszudenken.
+// zielUnbekannt trennt zwei Faelle, die beide "ziel ist leer" ergeben:
+// (a) Telekom gibt wirklich keinen Zielwert vor (One Touch, NPS Schalten,
+//     NFTQ-B) - dann bleibt es dauerhaft so, und "kein Telekom-Zielwert" ist
+//     die Wahrheit;
+// (b) die kpi_uebersicht.csv ist schlicht nicht geladen - dann WEISS der Agent
+//     das Ziel nur nicht, und "kein Telekom-Zielwert" waere eine Luege.
+// Ohne dieses Merkmal behauptet die Kachel bei jeder Kennzahl, es gaebe keinen
+// Zielwert, sobald die Datei fehlt.
 const KEINE_UEBERSICHT = { wert: null, menge: null, ampel: null, ziel: null,
-  schwelle: null, grund: "keine Uebersicht geladen - kpi_uebersicht.csv fehlt" };
+  schwelle: null, zielUnbekannt: true,
+  grund: "keine Uebersicht geladen - kpi_uebersicht.csv fehlt" };
 
 // Haengt einem Techniker seine Uebersicht-Zeile an. Alles danach liest nur
 // noch t.u - deshalb steht dieser Schritt an EINER Stelle und nicht verteilt.
@@ -799,7 +808,11 @@ const STATUS_STYLE = {
 };
 
 function StatusBadge({ status }) {
-  const s = STATUS_STYLE[status] || STATUS_STYLE.gut;
+  // Die Vorgabe war frueher STATUS_STYLE.gut. Damit trug jede Karte ohne
+  // Urteil ein gruenes "GUT" - Arash sah das am 17.07. auf den One-Touch-
+  // Karten, die per Vertrag GAR KEINEN Zielwert haben. "Kein Urteil" darf nie
+  // zur Bestnote werden; die Vorgabe ist deshalb grau.
+  const s = STATUS_STYLE[status] || STATUS_STYLE.unbekannt;
   return <span style={{ background: s.bg, color: s.color, padding: "2px 8px", borderRadius: 3, fontSize: 11, fontFamily: "monospace", fontWeight: 700 }}>{s.label}</span>;
 }
 
@@ -864,6 +877,8 @@ function KPIKachel({ label, k, hoch, trend, einheit }) {
   const e = einheit === undefined ? "%" : einheit;
   const vgl = hoch ? ">=" : "<=";
   const hatZiel = k.ziel !== null && k.ziel !== undefined && k.ziel !== "";
+  // Drei Faelle, nicht zwei - siehe KEINE_UEBERSICHT.
+  const zielUnbekannt = !hatZiel && k.zielUnbekannt === true;
   const hatSchwelle = k.schwelle !== null && k.schwelle !== undefined && k.schwelle !== "";
   const wort = st === "kritisch" ? "KRITISCH" : st === "warnung" ? "WARNUNG" : st === "gut" ? "im Ziel" : "kein Urteil";
   return (
@@ -872,6 +887,7 @@ function KPIKachel({ label, k, hoch, trend, einheit }) {
       <div style={{ fontSize: 10, color: "#6b7280" }}>
         {hatZiel
           ? <>Ziel {vgl} {k.ziel}{e}{hatSchwelle ? ` . gelb bis ${k.schwelle}${e}` : ""}</>
+          : zielUnbekannt ? "Zielwert unbekannt - Uebersicht fehlt"
           : "kein Telekom-Zielwert"}
       </div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 3 }}>
@@ -908,13 +924,26 @@ function TechCard({ tech, baselines, vorperiode, ursachen }) {
   // Wer hier kuenftig eine Bedingung braucht: NICHT nachbauen, sondern
   // techWorst() erweitern. Eine Regel, ein Ergebnis.
   const worst = techWorst(tech);
-  const borderColor = worst === "kritisch" ? "#7f1d1d" : worst === "warnung" ? "#78350f" : "#14532d";
+  // worst ist null, solange kein einziges Urteil vorliegt (z. B. Uebersicht
+  // nicht geladen). Frueher fiel null in den letzten Zweig und die Karte bekam
+  // einen gruenen Rahmen - "ich weiss nichts" sah aus wie "alles gut".
+  const borderColor = worst === "kritisch" ? "#7f1d1d"
+                    : worst === "warnung" ? "#78350f"
+                    : worst === "gut" ? "#14532d"
+                    : "#1f2937";                       // kein Urteil: neutral
   const quelleLabel = { smsfeedback: "SMS-Feedback", smsfeedbackschalten: "Schalten", nftq: "NFTQ", standard: "Manuell", onetouch: "OneTouch", alle: "Alle" }[tech.quelle] || "";
   // NPS Schalten hat keinen Zielwert (steht so in der Uebersicht: KEIN_ZIEL),
   // also gibt es hier nie eine Farbe. Frueher rief diese Zeile getNPSStatus()
   // ohne Menge und ohne Ziel auf - und faerbte eine Zahl, die niemand bewertet.
   const npsStatus = ampelU(tech, "nps_schalten");
-  const npsColor = npsStatus === "kritisch" ? "#f87171" : npsStatus === "warnung" ? "#fbbf24" : "#4ade80";
+  // Der Kommentar oben stimmte, die Zeile darunter nicht: ampelU liefert hier
+  // IMMER null (KEIN_ZIEL), und die Kette fiel jedes Mal in den letzten Zweig.
+  // NPS Schalten stand also auf JEDER Karte gruen - fuer eine Kennzahl, die
+  // niemand bewertet. Jetzt grau, wie es der Kommentar immer schon sagte.
+  const npsColor = npsStatus === "kritisch" ? "#f87171"
+                 : npsStatus === "warnung" ? "#fbbf24"
+                 : npsStatus === "gut" ? "#4ade80"
+                 : "#6b7280";
   return (
     <div style={{ background: "#111827", border: `1px solid ${borderColor}`, borderRadius: 8, padding: "16px 18px", marginBottom: 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
