@@ -158,7 +158,8 @@ const DEFAULT_BASELINES = {
     geplatzte_termine: 0.6, info_quote_pb: 90, so_quote: 2, service_calls: 93,
   },
 };
-const OT_BASELINE = { a_ges: 95.0, a1: 60.0 };
+// OT_BASELINE = { a_ges: 95.0, a1: 60.0 } ist raus - beide Zahlen erfunden,
+// One Touch steht in keinem Telekom-Papier mit Zielwert.
 const STORAGE_KEY = "fibernc_kpi_v2";
 const KONTAKTE_KEY = "fibernc_kontakte";
 
@@ -171,12 +172,28 @@ const KATEGORIEN = [
   { id: "standard", label: "Manuell" },
 ];
 
+// HIER STANDEN BIS 17.07.2026 DOCH NOCH ZIELWERTE - getarnt als "Baseline":
+//
+//   Baseline KW13-19: CC=${bl.gesamt.cc_rate}% | Termintreue=${...} | ...
+//   KW20 schlechteste Woche (NPS 26, Termintreue 85,7%). KW23-24 FS5336 ...
+//
+// Zwei Probleme auf einmal. ERSTENS waren das gar keine Baselines, sondern
+// DEFAULT_BASELINES - also die Zielwerte des Baseline-Editors (cc_rate: 95
+// "Courtesy Calls Zielwert"). Die KI las "Lösungsquote=95%" und schrieb
+// "Lösungsquote ✅ Ziel >= 95%". Damit war der Prompt die letzte Stelle, an
+// der der Editor noch urteilte - und mit veralteten Zahlen (NPS 68 statt
+// 67,1 laut Vertrag, NFTQ-S 6,6 statt 7,0).
+// ZWEITENS: KW13-19 und KW20 liegen VOR dem 01.07.2026. Vikuline faehrt erst
+// seit diesem Tag fuer die Telekom - diese Wochen koennen keine Zahlen der
+// Firma sein. Sie stammen aus dem Vorgaenger-Agenten. Die KI bekam also die
+// Historie einer anderen Firma als Massstab fuer Arashs Monteure.
+//
+// Der Parameter bl bleibt in der Signatur, damit der Aufruf unveraendert
+// bleibt - benutzt wird er nicht mehr.
 const SYSTEM_PROMPT_FN = (bl) => `Du bist ein operativer KPI-Analyseagent für ein Telekommunikations-Subunternehmen (Telekom-Subunternehmer, Kupfer & FTTH, Bergheim NRW).
-Baseline KW13-19: CC=${bl.gesamt.cc_rate}% | Termintreue=${bl.gesamt.termintreue}% | Lösungsquote=${bl.gesamt.loesungsquote}%
-FS5335: CC=${bl.fs5335.cc_rate}% | Termintreue=${bl.fs5335.termintreue}% | Lösungsquote=${bl.fs5335.loesungsquote}%
-FS5336: CC=${bl.fs5336.cc_rate}% | Termintreue=${bl.fs5336.termintreue}% | Lösungsquote=${bl.fs5336.loesungsquote}%
-KW20 schlechteste Woche (NPS 26, Termintreue 85,7%). KW23-24 FS5336 kritisch: CC 70%, SearchCall 37%.
-OneTouch: A1=erster Besuch erledigt (Ziel >=60%), AX=Abbruch, A0=nicht erledigt (kritisch >10%).
+Vikuline faehrt erst seit dem 01.07.2026 fuer die Telekom. Es gibt KEINE aeltere
+Historie und keine Baseline - fehlt eine Vorperiode, sag das und lass den Trend weg.
+OneTouch: A1=erster Besuch erledigt, AX=Abbruch, A0=nicht erledigt. KEIN Zielwert - Werte nennen, nicht bewerten.
 Aufgabe: Techniker-KPIs bewerten, Leitstellen-Empfehlungen. Wenn Vorperioden-Daten vorhanden, Trend je Techniker angeben.
 
 ZIELWERTE UND AMPELN STEHEN NICHT IN DIESEM PROMPT.
@@ -219,10 +236,20 @@ MINDESTMENGEN (Vikuline-Regel, keine Telekom-Vorgabe - so aber sagen):
 - Ein Wert "-" heisst: fuer diese Kennzahl wurde nichts geliefert. Das ist kein
   schlechter Wert und keine Null - dazu sagst du gar nichts.
 
-OneTouch (im Agenten hinterlegt; ob Telekom dafuer ZW vorgibt, ist UNGEPRUEFT -
-also nicht als Telekom-Vorgabe darstellen):
-- A1-Quote: Ziel >= 60%, Warnung 45-59%, Kritisch < 45%
-- A0-Quote: Ziel <= 5%, Kritisch > 10%
+ABKUERZUNGEN - RATE SIE NICHT. Du hast am 17.07.2026 "NFTQ Portiern" und
+"NPS Privatbereitstellung" geschrieben. Beides heisst PROBLEMBEHEBUNG. Solche
+Texte gehen per Mail an den Monteur.
+- NFT = Nachfolgeticket (ein Auftrag, bei dem nochmal jemand raus musste)
+- NFTQ-M = Nachfolgetickets Montage
+- NFTQ-S = Nachfolgetickets Schalten
+- NFTQ-P = Nachfolgetickets PROBLEMBEHEBUNG (nicht Portieren)
+- NFTQ-B = Nachfolgetickets Bereitstellung (= Schalten + Montage zusammen)
+- NPS BS / NPS Montage = Kundenzufriedenheit bei Montage/Bereitstellung
+- NPS PB = Kundenzufriedenheit bei PROBLEMBEHEBUNG (nicht Privatbereitstellung)
+- CC = Courtesy Call (Rueckruf nach dem Termin)
+- A1/AX/A0 = One Touch: beim ersten Besuch erledigt / abgebrochen / nicht erledigt
+Steht eine Abkuerzung nicht in dieser Liste, schreibe sie so hin, wie sie
+dasteht - erfinde keine Bedeutung.
 
 Antworte auf Deutsch, direkt und operativ. Erfinde keine Zielwerte fuer
 Kennzahlen, die oben nicht stehen - schreibe dann "kein Zielwert bekannt".
@@ -776,25 +803,6 @@ function StatusBadge({ status }) {
   return <span style={{ background: s.bg, color: s.color, padding: "2px 8px", borderRadius: 3, fontSize: 11, fontFamily: "monospace", fontWeight: 700 }}>{s.label}</span>;
 }
 
-function KPIBar({ value, baseline, label, trend }) {
-  if (value === null || value === undefined || isNaN(value)) return null;
-  const color = value / baseline < 0.85 ? "#f87171" : value / baseline < 0.93 ? "#fbbf24" : "#4ade80";
-  return (
-    <div style={{ marginBottom: 6 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#9ca3af", marginBottom: 2 }}>
-        <span>{label}</span>
-        <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          {trend && <span style={{ color: trend.color, fontSize: 10, fontWeight: 700 }}>{trend.symbol}%</span>}
-          <span style={{ color }}>{value.toFixed(1)}% / {baseline}%</span>
-        </span>
-      </div>
-      <div style={{ background: "#1f2937", borderRadius: 2, height: 6, position: "relative" }}>
-        <div style={{ width: `${Math.min(100, value)}%`, background: color, height: "100%", borderRadius: 2 }} />
-        <div style={{ position: "absolute", left: `${Math.min(100, baseline)}%`, top: -3, width: 2, height: 12, background: "#6b7280" }} />
-      </div>
-    </div>
-  );
-}
 
 // SECHSTE Stelle, die selbst geurteilt hat. Vorher stand hier
 // "const z = ziel || 4; const w = warn || 8" - und weil NIEMAND ziel/warn
@@ -807,36 +815,6 @@ function KPIBar({ value, baseline, label, trend }) {
 // Vorher hatte NFTQBar "const z = ziel || 4" - und NIEMAND uebergab ziel, also
 // faerbte er alle vier Kategorien nach dem pauschalen 4/8. Jetzt rechnet er gar
 // nicht mehr, er bekommt das Urteil fertig geliefert.
-function NFTQBar({ value, label, status, menge, hinweis, ziel }) {
-  if (value === null || value === undefined || isNaN(value)) return null;
-  const color = status === "kritisch" ? "#f87171" : status === "warnung" ? "#fbbf24"
-              : status === "gut" ? "#4ade80" : "#6b7280";
-  return (
-    <div style={{ marginBottom: 8 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#9ca3af", marginBottom: 2, gap: 8 }}>
-        <span>
-          {label}
-          {/* Die Basis gehoert neben die Quote: "22,22 %" sagt wenig,
-              "4 von 18" sagt alles. */}
-          {menge !== null && menge !== undefined ? <span style={{ color: "#4b5563" }}> ({menge} Auftraege)</span> : null}
-        </span>
-        <span style={{ color, fontWeight: status ? 700 : 400, whiteSpace: "nowrap" }}>
-          {value.toFixed(2)}%
-          {ziel !== null && ziel !== undefined
-            ? <span style={{ color: "#4b5563", fontWeight: 400 }}> / {ziel}%</span> : null}
-        </span>
-      </div>
-      <div style={{ background: "#1f2937", borderRadius: 2, height: 6 }}>
-        <div style={{ width: `${Math.min(100, value * 4)}%`,
-          // Ohne Urteil auch kein farbiger Balken - sonst sieht Grau nach Gut aus.
-          background: status ? color : "#374151", height: "100%", borderRadius: 2 }} />
-      </div>
-      {!status && hinweis ? (
-        <div style={{ fontSize: 9.5, color: "#6b7280", marginTop: 2, fontStyle: "italic" }}>{hinweis}</div>
-      ) : null}
-    </div>
-  );
-}
 
 function OTStackedBar({ tech }) {
   const a1 = tech.a1 || 0, a2 = tech.a2 || 0, a2plus = tech.a2plus || 0, ax = tech.ax || 0, a0 = tech.a0 || 0;
@@ -858,8 +836,62 @@ function OTStackedBar({ tech }) {
   );
 }
 
+// KPI-KACHEL (17.07.2026, Arashs Entwurf: "Zielwert Telekom oben, berechneter
+// Wert der Techniker unten").
+//
+// Vier Zeilen, immer dieselben, fuer JEDE Kennzahl:
+//   1 Name
+//   2 was die Telekom vorgibt  - Ziel und der gelbe Bereich bis zum Schwellwert
+//   3 was wir gerechnet haben  - der Wert
+//   4 worauf er beruht         - die Menge, und das Urteil
+//
+// Warum die Trennung wichtig ist: Zeile 2 ist fremd (Zusatzvereinbarung
+// Bonus-Malus), Zeile 3 ist unsere Rechnung. Wer die beiden nicht auseinander
+// halten kann, streitet mit dem Monteur ueber die falsche Zahl.
+//
+// Der Schwellwert war bisher UNSICHTBAR: [U] schreibt ihn in die CSV, der
+// Agent hat ihn stumm weggeworfen. Ein gelbes Feld konnte deshalb niemand
+// erklaeren. Alae@35 hat NFT Problembehebung 9,09 % bei einem Schwellwert von
+// 9,1 - das sieht man erst, wenn beide Zahlen dastehen.
+//
+// Ohne Zielwert bleibt die Kachel grau und sagt es. Ohne Urteil auch. Grau
+// heisst nie "gut".
+function KPIKachel({ label, k, hoch, trend, einheit }) {
+  if ((k.wert === null || k.wert === undefined || isNaN(k.wert)) && !k.grund) return null;
+  const st = k.ampel;
+  const c = st === "kritisch" ? "#f87171" : st === "warnung" ? "#fbbf24" : st === "gut" ? "#4ade80" : "#9ca3af";
+  const bg = st === "kritisch" ? "#1f1113" : st === "warnung" ? "#1f1a0f" : st === "gut" ? "#0f1a12" : "#161c26";
+  const e = einheit === undefined ? "%" : einheit;
+  const vgl = hoch ? ">=" : "<=";
+  const hatZiel = k.ziel !== null && k.ziel !== undefined && k.ziel !== "";
+  const hatSchwelle = k.schwelle !== null && k.schwelle !== undefined && k.schwelle !== "";
+  const wort = st === "kritisch" ? "KRITISCH" : st === "warnung" ? "WARNUNG" : st === "gut" ? "im Ziel" : "kein Urteil";
+  return (
+    <div style={{ background: bg, borderRadius: 6, padding: "8px 10px" }}>
+      <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 1 }}>{label}</div>
+      <div style={{ fontSize: 10, color: "#6b7280" }}>
+        {hatZiel
+          ? <>Ziel {vgl} {k.ziel}{e}{hatSchwelle ? ` . gelb bis ${k.schwelle}${e}` : ""}</>
+          : "kein Telekom-Zielwert"}
+      </div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 3 }}>
+        <span style={{ fontSize: 17, fontWeight: 700, fontFamily: "monospace", color: c }}>
+          {k.wert === null || k.wert === undefined || isNaN(k.wert) ? "-" : k.wert.toFixed(1) + e}
+        </span>
+        {trend && <span style={{ color: trend.color, fontSize: 10, fontWeight: 700 }}>{trend.symbol}{e}</span>}
+      </div>
+      <div style={{ fontSize: 10, color: st ? c : "#6b7280", marginTop: 1 }}>
+        {k.menge !== null && k.menge !== undefined ? `Basis ${k.menge} . ` : ""}
+        {st ? wort : (k.grund || "kein Urteil")}
+      </div>
+    </div>
+  );
+}
+
 function TechCard({ tech, baselines, vorperiode, ursachen }) {
-  const bl = String(tech.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
+  // baselines wird hier NICHT mehr gelesen. Ziele und Schwellen kommen aus der
+  // kpi_uebersicht.csv. Der Parameter bleibt, damit die Aufrufstellen
+  // unveraendert bleiben.
   // Bereiche nach Daten-Vorhandensein (so zeigt eine Kombi-Karte alle gleichzeitig)
   const isOT = tech.a1 != null || tech.a_ges != null || tech.a0 != null || tech.quelle === "onetouch";
   const isNFTQ = [tech.nftq_b, tech.nftq_s, tech.nftq_m, tech.nftq_p].some(v => v != null) || tech.quelle === "nftq";
@@ -899,11 +931,14 @@ function TechCard({ tech, baselines, vorperiode, ursachen }) {
       </div>
       {isOT && (<>
         <OTStackedBar tech={tech} />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <KPIBar value={tech.a_ges} baseline={OT_BASELINE.a_ges} label="Gesamterfolg" />
-          <KPIBar value={tech.a1} baseline={OT_BASELINE.a1} label="Erstlösung (A1)" />
+        {/* Hier stand KPIBar mit OT_BASELINE = { a_ges: 95.0, a1: 60.0 }. Die 60
+            hat niemand je belegt, und One Touch kommt in der Zusatzvereinbarung
+            gar nicht vor. Jetzt: Zahlen zeigen, nicht bewerten. */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
+          <KPIKachel label="Gesamterfolg" k={{ wert: tech.a_ges, menge: tech.auftraege, ampel: null, ziel: null, schwelle: null, grund: "kein Telekom-Zielwert" }} />
+          <KPIKachel label="Erstlösung (A1)" k={{ wert: tech.a1, menge: tech.auftraege, ampel: null, ziel: null, schwelle: null, grund: "kein Telekom-Zielwert" }} />
+          {tech.a0 !== null && tech.a0 !== undefined ? <KPIKachel label="Nicht erledigt (A0)" k={{ wert: tech.a0, menge: tech.auftraege, ampel: null, ziel: null, schwelle: null, grund: "kein Telekom-Zielwert" }} /> : null}
         </div>
-        {tech.a0 > 0 ? <div style={{ marginTop: 6, fontSize: 11, color: "#f87171" }}>! A0: {tech.a0.toFixed(1)}%</div> : null}
       </>)}
       {isNFTQ && (<>
         <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>NFTQ Fehlerquoten</div>
@@ -922,54 +957,34 @@ function TechCard({ tech, baselines, vorperiode, ursachen }) {
             Uebersicht. Frueher stand hier viermal ein Zielwert im Code
             (6,6 / 4 / 8,5) - und die Bereitstellung bekam ihre Begruendung als
             festen Satz, obwohl [U] laengst "KEIN_ZIEL" dazu schreibt. */}
-        {[["nftq_b", "Bereitstellung"], ["nftq_s", "Schalten"],
-          ["nftq_m", "Montage"], ["nftq_p", "Problembehebung"]].map(([id, label]) => {
-          const k = kpiAusU(tech, id);
-          return <NFTQBar key={id} value={k.wert} label={label} menge={k.menge}
-            status={k.ampel} hinweis={k.grund} ziel={k.ziel} />;
-        })}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
+          {[["nftq_b", "Nachfolgetickets Bereitstellung"], ["nftq_s", "Nachfolgetickets Schalten"],
+            ["nftq_m", "Nachfolgetickets Montage"], ["nftq_p", "Nachfolgetickets Problembehebung"]].map(([id, label]) => (
+            <KPIKachel key={id} label={label} k={kpiAusU(tech, id)} hoch={false} />
+          ))}
+        </div>
       </>)}
       {isSMS && (<>
-        <KPIBar value={tech.cc_rate} baseline={bl.cc_rate} label="CC-Rate"
-          trend={vorperiode ? getTrend(tech.cc_rate, vorperiode.cc_rate) : null} />
-        <KPIBar value={tech.termintreue} baseline={bl.termintreue} label="Termintreue"
-          trend={vorperiode ? getTrend(tech.termintreue, vorperiode.termintreue) : null} />
+        {/* KPIBar ist raus. Sie faerbte nach value/baseline: unter 0,93 gelb,
+            unter 0,85 rot. Bei Termintreue hiess das Warnung erst ab 89,3 % -
+            der Vertrag sagt 95,5 %. Die Karte urteilte also milder als [U]
+            direkt daneben. */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8, marginBottom: 8 }}>
+          <KPIKachel label="Courtesy Calls" k={kpiAusU(tech, "cc")} hoch
+            trend={vorperiode ? getTrend(tech.cc_rate, vorperiode.cc_rate) : null} />
+          <KPIKachel label="Termintreue" k={kpiAusU(tech, "termintreue")} hoch
+            trend={vorperiode ? getTrend(tech.termintreue, vorperiode.termintreue) : null} />
+          <KPIKachel label="Lösungsquote Bereitstellung" k={{ wert: tech.loesungsquote, menge: null, ampel: null, ziel: null, schwelle: null, grund: "[U] liest sie noch nicht - kein Urteil" }} hoch />
+          {[["nps_montage", "NPS Montage"], ["nps_pb", "NPS Problembehebung"],
+            ["nps_schalten", "NPS Schalten"]].map(([id, label]) => (
+            <KPIKachel key={id} label={label} k={kpiAusU(tech, id)} hoch einheit="" />
+          ))}
+        </div>
         {tech.termintreue !== null && (() => { const pts = getTermintreeuPunkte(tech.termintreue); return (
           <div style={{ fontSize: 10, color: pts >= 164 ? "#4ade80" : pts >= 0 ? "#fbbf24" : "#f87171", marginTop: -6, marginBottom: 4, paddingLeft: 2 }}>
             Auftragsinfo Punkte: <b>{pts > 0 ? "+" : ""}{pts}</b>
           </div>
         ); })()}
-        <KPIBar value={tech.loesungsquote} baseline={bl.loesungsquote} label="Lösungsquote"
-          trend={vorperiode ? getTrend(tech.loesungsquote, vorperiode.loesungsquote) : null} />
-        {/* Die drei NPS - Wert, Ziel, Menge und Urteil aus der Uebersicht.
-            Hier standen bis 17.07.2026 die Zielwerte im Code ("?? 68"), und
-            NPS Schalten brauchte ein eigenes Merkmal ohneZiel, damit es nicht
-            doch bewertet wird. Jetzt sagt die Datei selbst, was kein Ziel hat. */}
-        {[["nps_montage", "NPS Montage"], ["nps_pb", "NPS Problembeh."],
-          ["nps_schalten", "NPS Schalten"]].map(([id, label]) => {
-          const k = kpiAusU(tech, id);
-          return { ...k, label, wert: k.wert, anz: k.menge };
-        }).filter(n => n.wert !== null && n.wert !== undefined && !isNaN(n.wert)).map(n => {
-          const st = n.ampel;
-          const c = st === "kritisch" ? "#f87171" : st === "warnung" ? "#fbbf24"
-                  : st === "gut" ? "#4ade80" : "#6b7280";
-          return (
-            <div key={n.label} style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 11, color: "#9ca3af" }}>{n.label}:</span>
-              <span style={{ color: c, fontWeight: 700, fontSize: 13, fontFamily: "monospace" }}>{n.wert.toFixed(0)}</span>
-              <span style={{ background: st ? STATUS_STYLE[st]?.bg : "transparent", color: st ? c : "#6b7280", padding: "1px 6px", borderRadius: 3, fontSize: 10, fontFamily: "monospace", fontWeight: st ? 700 : 400 }}>
-                {st === "kritisch" ? "KRITISCH" : st === "warnung" ? "WARNUNG" : st === "gut" ? "GUT" : "nicht bewertet"}
-              </span>
-              {/* Ziel und Begruendung stehen in der Uebersicht. Ohne Zielwert
-                  gibt es keins anzuzeigen - dann sagt der Grund, warum. */}
-              <span style={{ fontSize: 10, color: "#4b5563" }}>
-                {n.ziel !== null && n.ziel !== undefined ? `Ziel: ${n.ziel}` : ""}
-                {n.anz !== null && n.anz !== undefined ? ` (${n.anz} Rueckmeldungen)` : ""}
-                {n.grund ? (n.ziel !== null ? ` - ${n.grund}` : n.grund) : ""}
-              </span>
-            </div>
-          );
-        })}
       </>)}
       <UrsachenBlock befunde={ursachen} />
     </div>
@@ -1064,7 +1079,7 @@ function UrsachenBlock({ befunde }) {
 // Mail wird getrennt vorbereitet, und der Anhang kommt per Hand dran. Zwei
 // Klicks statt keiner - aber ehrlich.
 // ---------------------------------------------------------------------------
-function berichtText(name, meine, tech, bl) {
+function berichtText(name, meine, tech) {
   // Der GANZE Bericht als Text - nicht ein Anschreiben mit Anhang.
   // Grund (Arash, 16.07.): "mach das bericht als mail fertig wenn man nichts
   // anhaengen darf". Ein Browser kann keine Datei an eine Mail haengen, also
@@ -1091,7 +1106,7 @@ function berichtText(name, meine, tech, bl) {
   // Kennzahlen mit Ampel - dieselbe Regel wie ueberall im Agenten. Ohne die
   // Zahlen fehlt der Mail der Anlass; ohne die Texte weiter unten fehlt ihr
   // der Grund. Beides gehoert in eine Mail.
-  if (tech && bl) {
+  if (tech) {
     const zeilen = [];
     // GROSSBUCHSTABEN, nicht "kritisch": Farbe kann jedes Mailprogramm
     // wegwerfen, Grossbuchstaben nicht. Der Techniker muss die Stelle auch
@@ -1279,12 +1294,11 @@ function BerichtTab({ ursachen, techs, baselines, kontakte, nurTechniker, onWaeh
   // Auch hier ueber die Namensteile: der Techniker heisst in den Kennzahlen
   // vielleicht "Kheder Adil" und im Bericht "Adil Kheder".
   const tech = (techs || []).find(t => namensSchluessel(t.name) === namensSchluessel(name));
-  const bl = tech && String(tech.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
   const sortiert = [...meine].sort(
     (a, b) => (URSACHEN_RANG[a.einstufung] ?? 9) - (URSACHEN_RANG[b.einstufung] ?? 9));
   const zaehl = (e) => meine.filter(b => b.einstufung === e).length;
   const ats = [...new Set(meine.map(b => b.ats).filter(Boolean))].join(", ");
-  const text = berichtText(name, meine, tech, bl);
+  const text = berichtText(name, meine, tech);
   const kontakt = (kontakte || {})[name] || {};
   const betreff = `Rueckmeldung zu deinen Auftraegen${ats ? ` (ATS ${ats})` : ""}`;
   const mailto = `mailto:${kontakt.email || ""}?subject=${encodeURIComponent(betreff)}&body=${encodeURIComponent(text)}`;
@@ -2242,36 +2256,77 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
   // trotzdem eine Stelle, an der jemand haette nachziehen muessen. Geloescht.
   // Die Massnahmen kommen aus der Ansicht weiter unten.
 
-  const berechneTechScore = useCallback((tech) => {
-    const v = (x) => x !== null && x !== undefined && !isNaN(x);
-    const bl = String(tech.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
-    const scores = [];
-    if (v(tech.cc_rate)) scores.push(Math.min(10, (tech.cc_rate / bl.cc_rate) * 10));
-    if (v(tech.termintreue)) scores.push(Math.min(10, (tech.termintreue / bl.termintreue) * 10));
-    if (v(tech.loesungsquote)) scores.push(Math.min(10, (tech.loesungsquote / bl.loesungsquote) * 10));
-    if (v(tech.nps)) scores.push(Math.min(10, Math.max(0, (tech.nps + 100) / 20)));
-    if (v(tech.a1)) scores.push(Math.min(10, (tech.a1 / 60) * 10));
-    if (v(tech.a_ges)) scores.push(Math.min(10, (tech.a_ges / 95) * 10));
-    // NFTQ Score - niedrigere Werte sind besser, Zielwert = 10/10
-    if (v(tech.nftq_b)) scores.push(Math.max(0, Math.min(10, (1 - tech.nftq_b / 20) * 10)));
-    if (v(tech.nftq_s)) scores.push(Math.max(0, Math.min(10, (1 - tech.nftq_s / 20) * 10)));
-    if (v(tech.nftq_m)) scores.push(Math.max(0, Math.min(10, (1 - tech.nftq_m / 20) * 10)));
-    if (v(tech.nftq_p)) scores.push(Math.max(0, Math.min(10, (1 - tech.nftq_p / 20) * 10)));
-    if (!scores.length) return null;
-    return Math.round((scores.reduce((s, v) => s + v, 0) / scores.length) * 10) / 10;
-  }, [baselines]);
+  // -------------------------------------------------------------------------
+  // BILANZ STATT SCORE (17.07.2026)
+  //
+  // Hier stand berechneTechScore: eine Zehnerskala aus a1/60, a_ges/95,
+  // (nps+100)/20 und NFTQ (1 - x/20). JEDE dieser Zahlen war frei erfunden -
+  // keine steht in der Zusatzvereinbarung, keine in einer Telekom-Folie. Die
+  // Rechnung kannte keine Mindestmenge und zog ihre Bezugswerte aus den
+  // Baselines; damit war sie die letzte Stelle, an der der Baseline-Editor
+  // noch etwas bewirkte, ohne dass man es sah.
+  //
+  // Was sie im Betrieb angerichtet hat (KW28): Adil Kheder stand mit
+  // "Avg Score 10.0/10" auf der Startseite. Sein NPS PB von +100 kam aus
+  // EINER Rueckmeldung, und seine NFTQ Montage lag bei 22,2 % (4 von 18) -
+  // dem einzigen echten KRITISCH der Woche. Die Skala hat es weggemittelt.
+  //
+  // Jetzt wird nur gezaehlt, was [U] beurteilt hat. Kein Mittelwert, keine
+  // Gewichtung, keine Skala: "5 von 7 im Ziel" laesst sich nachrechnen, und
+  // der Nenner sagt gleich mit, wie viel ueberhaupt beurteilbar war. Wer
+  // keine Uebersicht hat, bekommt "-" und keine Note.
+  const techBilanz = (t) => {
+    const urteile = BEWERTETE_KENNZAHLEN.map(k => ampelU(t, k)).filter(x => x !== null);
+    return {
+      bewertet: urteile.length,
+      imZiel: urteile.filter(a => a === "gut").length,
+      warnung: urteile.filter(a => a === "warnung").length,
+      kritisch: urteile.filter(a => a === "kritisch").length,
+    };
+  };
+  const bilanzText = (t) => {
+    const b = techBilanz(t);
+    return b.bewertet ? `${b.imZiel} von ${b.bewertet}` : "-";
+  };
+  const teamBilanz = () => {
+    const b = angezeigt.map(techBilanz).filter(x => x.bewertet);
+    if (!b.length) return "-";
+    return `${b.reduce((s, x) => s + x.imZiel, 0)} von ${b.reduce((s, x) => s + x.bewertet, 0)}`;
+  };
 
-  const scoreColor = (s) => !s ? "#6b7280" : s >= 8.5 ? "#4ade80" : s >= 7 ? "#fbbf24" : "#f87171";
-  const scoreLabel = (s) => !s ? "-" : s >= 9 ? "Ausgezeichnet" : s >= 8 ? "Gut" : s >= 7 ? "Befriedigend" : s >= 5 ? "Verbesserungsbedarf" : "Kritisch";
+  // Farbe und Wort kommen aus derselben Quelle wie die Ampel selbst - nicht
+  // aus einer zweiten Schwelle. null ist grau: kein Urteil ist kein "gut".
+  const ampelFarbe = (a) => a === "kritisch" ? "#f87171" : a === "warnung" ? "#fbbf24" : a === "gut" ? "#4ade80" : "#6b7280";
+  const ampelWort = (a) => a === "kritisch" ? "KRITISCH" : a === "warnung" ? "WARNUNG" : a === "gut" ? "im Ziel" : "kein Urteil";
 
+  // Die Einzelbewertung war die dreizehnte Stelle mit eigenen Zahlen: sie tippte
+  // "Ziel>=96%", "NPS-Ziel jeweils >=67" und "NFTQ-S Ziel<=7%" fest in den Text,
+  // den die KI zu sehen bekam - am Umbau vorbei und teils falsch (der Vertrag
+  // sagt 96,1 und 67,1). Jetzt bekommt die KI dasselbe wie ueberall: Wert,
+  // Menge, Ampel, Ziel und den Grund, alles aus [U].
   const bewerteEinzelTechniker = useCallback(async (tech) => {
-    const bl = String(tech.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
-    const score = berechneTechScore(tech);
-    const kpiText = tech.quelle === "onetouch"
-      ? `A-Gesamt=${tech.a_ges?.toFixed(1) ?? "-"}%, A1=${tech.a1?.toFixed(1) ?? "-"}%, AX=${tech.ax?.toFixed(1) ?? "-"}%, A0=${tech.a0?.toFixed(1) ?? "-"}%`
-      : tech.quelle === "nftq"
-      ? `NFTQ-B=${tech.nftq_b?.toFixed(2) ?? "-"}% (Ziel<=4%), NFTQ-S=${tech.nftq_s?.toFixed(2) ?? "-"}% (Ziel<=7%), NFTQ-M=${tech.nftq_m?.toFixed(2) ?? "-"}% (Ziel<=4%), NFTQ-P=${tech.nftq_p?.toFixed(2) ?? "-"}% (Ziel<=8.7%), Mengen: B=${tech.menge_b ?? "-"} S=${tech.menge_s ?? "-"} M=${tech.menge_m ?? "-"} P=${tech.menge_p ?? "-"}`
-      : `CC=${tech.cc_rate?.toFixed(1) ?? "-"}% (Ziel>=95%), Termintreue=${tech.termintreue?.toFixed(1) ?? "-"}% (Ziel>=96%), Loesungsquote=${tech.loesungsquote?.toFixed(1) ?? "-"}%, NPS-Montage=${tech.nps_montage?.toFixed(0) ?? "-"}, NPS-Problembehebung=${tech.nps_pb?.toFixed(0) ?? "-"}, NPS-Schalten=${tech.nps?.toFixed(0) ?? "-"} (NPS-Ziel jeweils >=67)`;
+    const b = techBilanz(tech);
+    const zeile = (id, label) => {
+      const k = kpiAusU(tech, id);
+      if (k.wert === null && !k.grund) return null;
+      const wert = k.wert === null ? "-" : k.wert.toFixed(1);
+      const basis = k.menge !== null && k.menge !== undefined ? `Basis ${k.menge}` : "Basis unbekannt";
+      const urteil = k.ampel ? k.ampel.toUpperCase() : `kein Urteil (${k.grund || "Grund unbekannt"})`;
+      const ziel = k.ziel !== null && k.ziel !== undefined && k.ziel !== "" ? `, Ziel ${k.ziel}` : ", kein Zielwert";
+      return `${label}=${wert} (${basis}${ziel}) -> ${urteil}`;
+    };
+    const zeilen = [
+      zeile("termintreue", "Termintreue"), zeile("cc", "Courtesy Calls"),
+      zeile("nps_montage", "NPS Montage"), zeile("nps_pb", "NPS Problembehebung"),
+      zeile("nps_schalten", "NPS Schalten"),
+      zeile("nftq_s", "Nachfolgetickets Schalten"),
+      zeile("nftq_m", "Nachfolgetickets Montage"),
+      zeile("nftq_p", "Nachfolgetickets Problembehebung"),
+      zeile("nftq_b", "Nachfolgetickets Bereitstellung"),
+    ].filter(Boolean);
+    const kpiText = zeilen.length
+      ? zeilen.join(" | ")
+      : "KEINE KPI-Uebersicht geladen - es liegt kein einziges Urteil vor.";
     setBewertungLoading(prev => ({ ...prev, [tech.name]: true }));
     try {
       const res = await fetch("/api/analyse", {
@@ -2281,20 +2336,20 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
           model: "claude-sonnet-4-6", max_tokens: 500,
           system: `Du bist KPI-Bewerter für Telekom-Techniker. Antworte NUR mit JSON ohne Backticks:
 {"kommentar": "1-2 Sätze persönliche Bewertung mit Namen", "staerken": ["max 2 Stärken"], "schwaechen": ["max 2 Schwächen"], "massnahme": "Eine konkrete Maßnahme"}`,
-          messages: [{ role: "user", content: `Techniker: ${tech.name}, Score: ${score}/10, KPIs: ${kpiText}, Aufträge: ${tech.auftraege}` }]
+          messages: [{ role: "user", content: `Techniker: ${tech.name}, im Ziel: ${bilanzText(tech)} bewerteten Kennzahlen, KPIs: ${kpiText}, Aufträge: ${tech.auftraege}` }]
         }),
       });
       const data = await res.json();
       const text = data.content?.map(b => b.text || "").join("") || "";
       const clean = text.replace(/```json|```/g, "").trim();
       const parsed = JSON.parse(clean);
-      setTechBewertungen(prev => ({ ...prev, [tech.name]: { ...parsed, score } }));
+      setTechBewertungen(prev => ({ ...prev, [tech.name]: { ...parsed, bilanz: b } }));
     } catch(e) {
-      setTechBewertungen(prev => ({ ...prev, [tech.name]: { kommentar: "Bewertung fehlgeschlagen.", score } }));
+      setTechBewertungen(prev => ({ ...prev, [tech.name]: { kommentar: "Bewertung fehlgeschlagen.", bilanz: b } }));
     } finally {
       setBewertungLoading(prev => ({ ...prev, [tech.name]: false }));
     }
-  }, [baselines, berechneTechScore]);
+  }, [angezeigt]);
 
   const bewerteAlle = useCallback(async () => {
     for (const tech of angezeigt) {
@@ -2420,7 +2475,10 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
       // Jetzt kommt der Status aus derselben Quelle wie ueberall.
       datatenMitStatus[kat] = techs.map(t => {
         const status = techWorst(mitUebersicht(t, uIndex));
-        return { ...t, _status: status, _score: berechneTechScore(t) };
+        // _score ist raus (der erfundene Zehnerscore). Nebenbei war er hier
+        // doppelt falsch: er lief auf t OHNE angehaengte Uebersicht, waehrend
+        // _status direkt daneben mitUebersicht(t) benutzt.
+        return { ...t, _status: status };
       });
     });
     const datum = now.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -2431,7 +2489,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
     }]);
     setGespeichert({}); setAktiveKategorie("alle");
     setAiAnalysis(""); setMassnahmen([]); setMassnahmenFehler(null); setTechBewertungen({});
-  }, [gespeichert, baselines, aiAnalysis, hatDaten, techBewertungen, berechneTechScore]);
+  }, [gespeichert, aiAnalysis, hatDaten, techBewertungen, uebersicht]);
 
   const exportPDF = async () => {
     setExporting(true);
@@ -2450,31 +2508,37 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
     if (aktiveKategorie === quelle) setAktiveKategorie("alle");
   };
 
-  const criticalCount = angezeigt.filter(t => techWorst(t, baselines) === "kritisch").length;
+  const criticalCount = angezeigt.filter(t => techWorst(t) === "kritisch").length;
+  // Wie viele Techniker haben ueberhaupt ein Urteil? Ist das 0, sagt
+  // "Kritisch: 0" nichts ueber die Lage aus - dann gehoert dort ein Strich hin.
+  const bewertetCount = angezeigt.filter(t => techWorst(t) !== null).length;
 
   const avg = (key) => {
     const vals = angezeigt.map(t => t[key]).filter(v => v !== null && !isNaN(v));
     return vals.length ? (vals.reduce((s, v) => s + v, 0) / vals.length).toFixed(1) : "-";
   };
 
-  const teamAvgScore = () => {
-    const scores = angezeigt.map(t => berechneTechScore(t)).filter(s => s !== null && !isNaN(s));
-    return scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : "-";
-  };
-
   const isOTView = aktiveKategorie === "onetouch";
 
   const FirmendashboardTab = () => {
     if (!angezeigt || !angezeigt.length) return null;
-    const sorted = [...angezeigt].filter(t => !nurKritisch || techWorst(t, baselines) === "kritisch").sort((a, b) => (berechneTechScore(b) || 0) - (berechneTechScore(a) || 0));
+    // Sortierung ohne erfundene Gewichtung: erst wer die wenigsten KRITISCH
+    // hat, dann die wenigsten WARNUNG, dann wer mehr im Ziel steht. Wer gar
+    // kein Urteil hat, steht am Ende - nicht oben, wo Leere wie Bestnote
+    // aussieht. Frueher sortierte hier der Zehnerscore.
+    const sorted = [...angezeigt].filter(t => !nurKritisch || techWorst(t) === "kritisch").sort((a, b) => {
+      const x = techBilanz(a), y = techBilanz(b);
+      if (!x.bewertet !== !y.bewertet) return x.bewertet ? -1 : 1;
+      return (x.kritisch - y.kritisch) || (x.warnung - y.warnung) || (y.imZiel - x.imZiel);
+    });
     return (
       <div>
         <div style={{ background: "#0f172a", border: "1px solid #1f2937", borderRadius: 8, padding: "16px", marginBottom: 20 }}>
           <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>Team-Übersicht</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
             {[
-              { label: "Avg Team-Score", value: teamAvgScore() + "/10", color: scoreColor(parseFloat(teamAvgScore())) },
-              { label: "Kritisch", value: criticalCount, color: criticalCount > 0 ? "#f87171" : "#4ade80" },
+              { label: "Im Ziel", value: teamBilanz(), color: "#9ca3af" },
+              { label: "Kritisch", value: bewertetCount ? criticalCount : "-", color: !bewertetCount ? "#6b7280" : criticalCount > 0 ? "#f87171" : "#4ade80" },
               { label: "Bewertet", value: `${Object.keys(techBewertungen).length}/${angezeigt.length}`, color: "#60a5fa" },
             ].map(s => (
               <div key={s.label} style={{ background: "#111827", borderRadius: 6, padding: "10px 12px" }}>
@@ -2486,30 +2550,29 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
         </div>
         <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>Rangliste</div>
         {sorted.map((tech, i) => {
-          const score = berechneTechScore(tech);
+          const ampel = techWorst(tech);
+          const bilanz = techBilanz(tech);
           const bew = techBewertungen[tech.name];
           const isLoadingThis = bewertungLoading[tech.name];
           const k = kontakte[tech.name] || {};
           const mailBody = bew
-            ? `Hallo ${tech.name.split(" ")[0]},\n\nhier ist Ihre persönliche KPI-Bewertung:\n\nScore: ${score}/10 - ${scoreLabel(score)}\n\n${bew.kommentar}\n\n${bew.staerken?.length ? `Stärken:\n${bew.staerken.map(s => `• ${s}`).join("\n")}\n\n` : ""}${bew.schwaechen?.length ? `Verbesserungsbedarf:\n${bew.schwaechen.map(s => `• ${s}`).join("\n")}\n\n` : ""}Maßnahme: ${bew.massnahme || ""}\n\nMit freundlichen Grüßen\n${FIRMA} Leitstelle`
+            ? `Hallo ${tech.name.split(" ")[0]},\n\nhier ist Ihre persönliche KPI-Bewertung:\n\nStand: ${ampelWort(ampel)} - ${bilanzText(tech)} bewerteten Kennzahlen im Ziel\n\n${bew.kommentar}\n\n${bew.staerken?.length ? `Stärken:\n${bew.staerken.map(s => `• ${s}`).join("\n")}\n\n` : ""}${bew.schwaechen?.length ? `Verbesserungsbedarf:\n${bew.schwaechen.map(s => `• ${s}`).join("\n")}\n\n` : ""}Maßnahme: ${bew.massnahme || ""}\n\nMit freundlichen Grüßen\n${FIRMA} Leitstelle`
             : "";
           const mailto = `mailto:${k.email || ""}?subject=${encodeURIComponent(`KPI-Bewertung ${tech.name}`)}&body=${encodeURIComponent(mailBody)}`;
           return (
-            <div key={tech.name} style={{ background: "#111827", border: `1px solid ${score >= 8 ? "#14532d" : score >= 6 ? "#78350f" : "#7f1d1d"}`, borderRadius: 8, padding: "14px 16px", marginBottom: 10 }}>
+            <div key={tech.name} style={{ background: "#111827", border: `1px solid ${ampel === "gut" ? "#14532d" : ampel === "warnung" ? "#78350f" : ampel === "kritisch" ? "#7f1d1d" : "#1f2937"}`, borderRadius: 8, padding: "14px 16px", marginBottom: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: scoreColor(score), fontFamily: "monospace", minWidth: 28 }}>#{i + 1}</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: ampelFarbe(ampel), fontFamily: "monospace", minWidth: 28 }}>#{i + 1}</div>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 14, color: "#f9fafb" }}>{tech.name}</div>
                     <div style={{ fontSize: 11, color: "#6b7280" }}>FS{tech.standort} . {tech.auftraege} Aufträge</div>
                   </div>
                 </div>
-                {score !== null && (
-                  <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: scoreColor(score), fontFamily: "monospace" }}>{score}</div>
-                    <div style={{ fontSize: 9, color: scoreColor(score) }}>/10 . {scoreLabel(score)}</div>
-                  </div>
-                )}
+                <div style={{ textAlign: "center" }} title={bilanz.bewertet ? `${bilanz.bewertet} von 7 Kennzahlen sind beurteilbar - der Rest hat keinen Zielwert oder zu wenig Daten` : "Keine KPI-Uebersicht geladen"}>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: ampelFarbe(ampel), fontFamily: "monospace" }}>{bilanzText(tech)}</div>
+                  <div style={{ fontSize: 9, color: ampelFarbe(ampel) }}>im Ziel . {ampelWort(ampel)}</div>
+                </div>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
                 {(() => { const k = kpiAusU(tech, "cc"); if (k.wert === null) return null; const c = k.ampel === "kritisch" ? "#f87171" : k.ampel === "warnung" ? "#fbbf24" : k.ampel === "gut" ? "#4ade80" : "#9ca3af"; return <span title={k.grund || undefined} style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: k.ampel ? 700 : 400 }}>CC {k.wert.toFixed(1)}% / &gt;={k.ziel}%</span>; })()}
@@ -2572,7 +2635,7 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
                 {bew && !k.email && <span style={{ fontSize: 10, color: "#6b7280" }}>! Keine Email - unter  eintragen</span>}
                 {archiv.length > 0 && <button onClick={() => setShowVerlauf(tech.name)} style={{ background: "#0f172a", color: "#60a5fa", border: "1px solid #1e3a5f", borderRadius: 5, cursor: "pointer", fontSize: 11, padding: "5px 12px" }}>Verlauf</button>}
                 {k.mobil && bew && (
-                  <a href={`https://wa.me/${k.mobil.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(`Hallo ${tech.name.split(" ")[0]}, Ihr KPI-Score: ${score}/10 - ${scoreLabel(score)}. ${bew?.massnahme || ""}`)}`}
+                  <a href={`https://wa.me/${k.mobil.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(`Hallo ${tech.name.split(" ")[0]}, Ihre KPI: ${bilanzText(tech)} bewerteten Kennzahlen im Ziel - ${ampelWort(ampel)}. ${bew?.massnahme || ""}`)}`}
                     target="_blank" rel="noreferrer"
                     style={{ background: "#15803d", color: "#fff", padding: "5px 12px", borderRadius: 5, fontSize: 11, textDecoration: "none", fontWeight: 600 }}> WhatsApp</a>
                 )}
@@ -2839,16 +2902,23 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
             {error && <div style={{ fontSize: 11, color: "#4ade80", marginBottom: 8 }}>{error}</div>}
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 20 }}>
+              {/* DIE KOPFKACHELN LOGEN (17.07.2026): "Kritisch" zeigte eine 0 und
+                  faerbte sie GRUEN, auch wenn gar keine Uebersicht geladen war -
+                  dann liefert techWorst ueberall null, criticalCount ist 0, und
+                  oben stand in Gruen "Kritisch 0". Das heisst aber nicht "keiner
+                  ist kritisch", sondern "ich weiss es nicht". Daneben stand
+                  "Avg Score 10.0/10" fuer Adil Kheder, dessen NPS PB auf EINER
+                  Rueckmeldung beruht. Jetzt: ohne Urteil ein grauer Strich. */}
               {(isOTView ? [
                 { label: "Techniker", value: angezeigt.length, color: "#60a5fa" },
-                { label: "Kritisch", value: criticalCount, color: criticalCount > 0 ? "#f87171" : "#4ade80" },
-                { label: "Avg A1-Rate", value: avg("a1") !== "-" ? avg("a1") + "%" : "-", color: "#4ade80" },
-                { label: "Avg Score", value: teamAvgScore() + "/10", color: scoreColor(parseFloat(teamAvgScore())) },
+                { label: "Kritisch", value: bewertetCount ? criticalCount : "-", color: !bewertetCount ? "#6b7280" : criticalCount > 0 ? "#f87171" : "#4ade80" },
+                { label: "Avg A1-Rate", value: avg("a1") !== "-" ? avg("a1") + "%" : "-", color: "#9ca3af" },
+                { label: "Im Ziel", value: teamBilanz(), color: "#9ca3af" },
               ] : [
                 { label: "Techniker", value: angezeigt.length, color: "#60a5fa" },
-                { label: "Kritisch", value: criticalCount, color: criticalCount > 0 ? "#f87171" : "#4ade80" },
+                { label: "Kritisch", value: bewertetCount ? criticalCount : "-", color: !bewertetCount ? "#6b7280" : criticalCount > 0 ? "#f87171" : "#4ade80" },
                 { label: "Avg CC-Rate", value: avg("cc_rate") !== "-" ? avg("cc_rate") + "%" : "-", color: "#fbbf24" },
-                { label: "Avg Score", value: teamAvgScore() + "/10", color: scoreColor(parseFloat(teamAvgScore())) },
+                { label: "Im Ziel", value: teamBilanz(), color: "#9ca3af" },
               ]).map(s => {
                 const klickbar = s.label === "Techniker" || s.label === "Kritisch";
                 const zielFilter = s.label === "Kritisch";
