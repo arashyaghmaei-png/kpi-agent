@@ -12,6 +12,11 @@ const ARCHIV_KEY = "fibernc_archiv";
 // eine Zeile je Befund. Der Agent RECHNET damit nichts; er zeigt sie zu dem
 // Techniker an, dessen Karte man aufmacht.
 const URSACHEN_KEY = "fibernc_ursachen";
+// Die Uebersicht aus [U] - Ampel, Ziel und Schwelle je Kennzahl. Eigener
+// Speicher, weil sie KEINE Kennzahlen-Kategorie ist: sie ersetzt keinen Report
+// und darf nicht als Reiter auftauchen. Sie legt sich neben die Zahlen und
+// sagt, wie sie zu lesen sind.
+const UEBERSICHT_KEY = "fibernc_uebersicht";
 
 // ---------------------------------------------------------------------------
 // WIE ALT SIND DIE GESPEICHERTEN DATEN?
@@ -26,7 +31,12 @@ const URSACHEN_KEY = "fibernc_ursachen";
 // der Agent es von selbst, statt still falsche Zahlen zu zeigen.
 // ---------------------------------------------------------------------------
 const VERSION_KEY = "fibernc_daten_version";
-const DATEN_VERSION = 2;   // 2 = seit der Reparatur "0 bleibt 0" (16.07.2026)
+const DATEN_VERSION = 3;   // 3 = seit dem Umbau zum Fenster (17.07.2026):
+                           // parseCSV/normalizeRows haben sich geaendert, und der
+                           // Agent rechnet nicht mehr selbst. Was vor dem Umbau
+                           // im Browser lag, ist nach anderen Regeln eingelesen
+                           // worden - deshalb hochzaehlen, sonst zeigt er still
+                           // alte Zahlen. 2 = Reparatur "0 bleibt 0" (16.07.).
 
 // ---------------------------------------------------------------------------
 // ORDNER VERBINDEN
@@ -91,6 +101,11 @@ const DATEI_ROLLEN = [
   { endung: "_one_touch.csv", rolle: "report" },
   { endung: "_nftq.csv", rolle: "report" },
   { endung: "_ursachen.csv", rolle: "ursachen" },
+  // Die Uebersicht aus [U]. Bis 17.07.2026 stand sie hier ausdruecklich auf der
+  // Ignorieren-Liste - der Agent rechnete ja selbst. Jetzt ist sie die Quelle
+  // fuer JEDE Ampel und JEDEN Zielwert; ohne sie zeigt der Agent Zahlen ohne
+  // Urteil.
+  { endung: "_kpi_uebersicht.csv", rolle: "uebersicht" },
 ];
 
 function dateiRolle(name) {
@@ -164,31 +179,29 @@ KW20 schlechteste Woche (NPS 26, Termintreue 85,7%). KW23-24 FS5336 kritisch: CC
 OneTouch: A1=erster Besuch erledigt (Ziel >=60%), AX=Abbruch, A0=nicht erledigt (kritisch >10%).
 Aufgabe: Techniker-KPIs bewerten, Leitstellen-Empfehlungen. Wenn Vorperioden-Daten vorhanden, Trend je Techniker angeben.
 
-Telekom-Zielwerte. Quelle: Portal > Gesamtsicht Qualitaet, dort steht bei jedem
-Diagramm die Zielwertmarkierung "ZW". NICHTS DAVON SCHAETZEN oder ergaenzen.
-Diese Werte MUESSEN mit der Excel-Auswertung (kpi_uebersicht.py) uebereinstimmen -
-wenn Analyse und Excel verschiedene Ampeln zeigen, ist das schlimmer als gar keine.
+ZIELWERTE UND AMPELN STEHEN NICHT IN DIESEM PROMPT.
 
-SMS-Feedback/Schalten:
-- Courtesy Calls (CC-Rate): Ziel >= 95%, Warnung >= 85.5%, Kritisch < 85.5%
-- Termintreue: Ziel >= 96%, Warnung >= 86.4%, Kritisch < 86.4%
-- Loesungsquote: Ziel >= 95%
-- NPS Montage (Report-Spalte "NPS BS"): Ziel >= 68, Warnung >= 40, Kritisch < 40
-- NPS Problembehebung ("NPS PB"): Ziel >= 68, Warnung >= 40, Kritisch < 40
-- NPS SCHALTEN: NICHT BEWERTEN. Dafuer gibt es in der Gesamtsicht Qualitaet
-  keinen Zielwert. Wert nennen, kein Urteil, keine Ampel.
-- Informationsquote PB: Ziel >= 87.5%
-- Geplatzte Termine: Ziel <= 0.6%, Kritisch > 2%
+Bis 17.07.2026 standen sie hier - und liefen mit der Excel auseinander. Die
+Analyse schrieb dann "NFTQ-Bereitstellung 18,18% Kritisch (Ziel <=4%)", wo die
+Excel gar kein Urteil hatte. Ein Prompt ist eine Kopie wie jede andere.
 
-NFTQ (Fehlerquote - NIEDRIGER ist besser). "NFT" = Nachfolgeticket: ein Auftrag,
-bei dem nochmal jemand raus musste. Schreibe das Wort aus, nicht abkuerzen.
-- NFTQ Montage: Ziel <= 4%, Warnung <= 8%, Kritisch > 8%
-- NFTQ Schalten: Ziel <= 6.6%, Warnung <= 10%, Kritisch > 10%
-- NFTQ Problembehebung: Ziel <= 8.5%, Warnung <= 12%, Kritisch > 12%
-- NFTQ BEREITSTELLUNG: NICHT BEWERTEN. Bereitstellung = Schalten + Montage,
-  ist also nur die Sammelquote der beiden. Wer sie mitzaehlt, zaehlt dieselben
-  Nachfolgetickets zweimal und der Techniker sieht doppelt so schlecht aus,
-  wie er ist. Telekom hat dafuer folgerichtig auch keinen Zielwert.
+Jede Kennzahl kommt dir unter "## KPI-Uebersicht ([U])" FERTIG BEURTEILT zu:
+wert, menge, ampel, ziel, schwelle, grund. Gerechnet hat kpi_uebersicht.py
+gegen die Zusatzvereinbarung Bonus-Malus (gueltig ab 01.04.2026).
+
+REGELN:
+- Uebernimm die Ampel, wie sie dasteht. Rechne nichts nach.
+- ampel = null heisst NICHT "gut". Es heisst: kein Urteil. Der Grund steht in
+  "grund" - schreib ihn hin, statt selbst zu entscheiden.
+- Nenne IMMER die Basis: "22,2 % = 4 von 18". Eine Quote ohne Menge ist wertlos.
+- ERFINDE KEINE ZIELWERTE. Steht bei einer Kennzahl kein "ziel", dann gibt es
+  keinen - schreibe "kein Zielwert bekannt" und beurteile sie nicht.
+- Kennzahlen ohne Zielwert: NFTQ Bereitstellung (= Schalten + Montage, zaehlt
+  dieselben Nachfolgetickets zweimal), NPS Schalten, One Touch (A1/A2/AX/A0),
+  Sterne. Wert nennen, kein Urteil.
+- "NFT" heisst Nachfolgeticket: ein Auftrag, bei dem nochmal jemand raus musste.
+  Schreib das Wort aus.
+- Fehlt die KPI-Uebersicht ganz, sag das und beurteile NICHTS.
 
 MINDESTMENGEN (Vikuline-Regel, keine Telekom-Vorgabe - so aber sagen):
 - NFTQ erst ab 10 Auftraegen in DER Kategorie bewerten. Darunter Wert nennen,
@@ -275,6 +288,10 @@ function detectFormat(headers) {
   // Muss VOR allen anderen stehen - er hat auch eine Spalte "Kennzahl", und
   // die wuerde sonst faelschlich als Standard-Report durchgehen.
   if (h.includes("einstufung") && h.some(x => x.startsWith("kunde sagt"))) return "ursachen";
+  // Die kpi_uebersicht.csv MUSS vor "smsfeedback" geprueft werden: sie hat eine
+  // Spalte "NPS PB", und die Pruefung unten wuerde sie dafuer halten. Erkennbar
+  // ist sie an den Ampel-Spalten - die hat sonst keine Datei.
+  if (h.some(x => x.startsWith("ampel "))) return "uebersicht";
   if (h.some(x => x === "a1" || x === "a ges." || x === "a ges" || x === "a0")) return "onetouch";
   if (h.some(x => x.includes("nftq b") || x.includes("nftq s"))) return "nftq";
   if (h.some(x => x.includes("courtesy call") || x.includes("abschluss call"))) return "smsfeedbackschalten";
@@ -351,6 +368,80 @@ function normalizeRows(rawRows) {
   // Befunde sind keine Techniker: sie werden nicht gemittelt, nicht bewertet
   // und nicht zusammengefasst - nur weitergereicht. Deshalb hier raus, bevor
   // die Kennzahlen-Logik darueber laeuft.
+  // Die Uebersicht aus [U] wird DURCHGEREICHT, nicht verrechnet. Genau das ist
+  // der Punkt: [U] hat gerechnet, der Agent liest ab. Aus jeder Zeile wird ein
+  // Eintrag je Kennzahl - Wert, Menge, Ampel, Ziel, Schwelle nebeneinander, so
+  // wie sie in der Datei stehen.
+  if (fmt === "uebersicht") {
+    const f = (row, name) => {
+      const k = Object.keys(row).find(x => cleanHeader(x).toLowerCase() === name.toLowerCase());
+      return k ? String(row[k] ?? "").trim() : "";
+    };
+    // "1.234,5" -> 1234.5 ; "" -> null. Die CSV kommt mit Dezimalkomma.
+    const z = (v) => {
+      const t = String(v ?? "").replace(/\./g, "").replace(",", ".").trim();
+      if (t === "" || t === "-") return null;
+      const n = parseFloat(t);
+      return isNaN(n) ? null : n;
+    };
+    // [U] schreibt seit 17.07.2026 WOERTER statt eines Strichs. Drei davon sind
+    // kein Urteil, sondern ein Grund - der wird hier in Klartext uebersetzt.
+    const urteil = (wort, mindest) => {
+      const w = String(wort || "").trim().toUpperCase();
+      if (w === "GUT" || w === "WARNUNG" || w === "KRITISCH") return { ampel: w.toLowerCase(), grund: null };
+      if (w === "KEIN_ZIEL") return { ampel: null, grund: "kein Telekom-Zielwert - Wert ohne Urteil" };
+      if (w === "ZU_WENIG_DATEN") return { ampel: null, grund: mindest ? `unter ${mindest} - daraus laesst sich nichts ablesen` : "zu wenig Daten fuer ein Urteil" };
+      if (w === "KEINE_DATEN") return { ampel: null, grund: "keine Rueckmeldungen" };
+      return { ampel: null, grund: null };   // auch der alte "-" landet hier
+    };
+
+    const KENNZAHLEN = [
+      ["termintreue", "Termintreue", null, "Termintreue", null],
+      ["cc", "CC", null, "CC", null],
+      ["nps_montage", "NPS Montage", "Menge NPS Montage", "NPS Montage", "nps"],
+      ["nps_pb", "NPS PB", "Menge NPS PB", "NPS PB", "nps"],
+      ["nps_schalten", "NPS Schalten", "Menge NPS Schalten", "NPS Schalten", "nps"],
+      // NFTQ-B hat KEINE eigene Mengenspalte - B = Bereitstellung = Schalten +
+      // Montage, die Basis ist also die Summe der beiden. (Kheder KW28:
+      // 4 + 18 = 22 Auftraege, 4 NFT -> 18,18 %. Stuende hier nur die
+      // Montage-Menge, waere die Basis 18 und die Prozentzahl daneben gelogen.)
+      ["nftq_b", "NFTQ-B", "@s+m", "NFTQ-B", "nftq"],
+      ["nftq_s", "NFTQ-S", "Menge NFTQ-S", "NFTQ-S", "nftq"],
+      ["nftq_m", "NFTQ-M", "Menge NFTQ-M", "NFTQ-M", "nftq"],
+      ["nftq_p", "NFTQ-P", "Menge NFTQ-P", "NFTQ-P", "nftq"],
+    ];
+
+    return rawRows
+      .filter(row => f(row, "techniker"))
+      .map(row => {
+        const mind = { nps: z(f(row, "Mindestmenge NPS")), nftq: z(f(row, "Mindestmenge NFTQ")) };
+        const kpi = {};
+        KENNZAHLEN.forEach(([id, wSp, mSp, suffix, mindArt]) => {
+          const u = urteil(f(row, "Ampel " + suffix), mindArt ? mind[mindArt] : null);
+          const menge = mSp === "@s+m"
+            ? (z(f(row, "Menge NFTQ-S")) ?? 0) + (z(f(row, "Menge NFTQ-M")) ?? 0)
+            : (mSp ? z(f(row, mSp)) : null);
+          kpi[id] = {
+            wert: z(f(row, wSp)),
+            menge,
+            ampel: u.ampel,
+            grund: u.grund,
+            ziel: z(f(row, "Ziel " + suffix)),
+            schwelle: z(f(row, "Schwelle " + suffix)),
+          };
+        });
+        return {
+          quelle: "uebersicht",
+          name: f(row, "Techniker"),
+          ats: f(row, "ATS"),
+          auftraege: z(f(row, "Auftraege")),
+          sterne: z(f(row, "Sterne")),
+          status: f(row, "Status").toLowerCase(),   // GUT/WARNUNG/KRITISCH/-
+          kpi,
+        };
+      });
+  }
+
   if (fmt === "ursachen") {
     const f = (row, name) => {
       const k = Object.keys(row).find(x => cleanHeader(x).toLowerCase() === name);
@@ -514,77 +605,91 @@ function parseCSV(text) {
 // kleinen Mengen misst die Quote den Zufall, nicht die Arbeit.
 // Diese zwei Zahlen MUESSEN mit kpi_uebersicht.py uebereinstimmen, sonst sagen
 // Excel und Agent Verschiedenes ueber denselben Mann.
-const MINDEST_NFTQ = 10;   // Auftraege in DER Kategorie
-const MINDEST_NPS = 2;     // Rueckmeldungen. Bei einer ist NPS nur +100 oder -100.
+// MINDEST_NFTQ und MINDEST_NPS standen hier bis 17.07.2026 - "diese zwei
+// Zahlen MUESSEN mit kpi_uebersicht.py uebereinstimmen", stand als Kommentar
+// dabei. Genau das ist das Problem gewesen: zwei Stellen, die jemand von Hand
+// gleich halten muss. Jetzt entscheidet [U], ob eine Menge reicht, und schreibt
+// "ZU_WENIG_DATEN" in die Ampel - samt Mindestmenge in einer eigenen Spalte.
 
-function getNPSStatus(nps, ziel = 68, menge = null) {
-  if (nps === null || nps === undefined || isNaN(nps) || nps === "undefined") return null;
-  // Zu duenne Datenlage: Wert anzeigen, aber nicht bewerten.
-  if (menge !== null && menge !== undefined && menge < MINDEST_NPS) return null;
-  if (nps >= ziel) return "gut";
-  if (nps >= 40) return "warnung";   // wie [U]: kritisch erst unter 40.
-  return "kritisch";                 // Frueher stand hier 20 - der Agent sagte
-                                     // dann "warnung", wo die Excel "kritisch"
-                                     // sagte (Tsoukalas KW28, NPS PB 33,3).
+// ===========================================================================
+// AB HIER RECHNET DER AGENT NICHT MEHR.
+//
+// Bis 17.07.2026 hatte er NEUN Stellen mit eigenen Regeln - techWorst,
+// berechneMassnahmen, die Massnahmen-Ansicht, TechCard, den KI-Prompt, NFTQBar,
+// das Firmendashboard, getOTStatus und getStatus. Jede mit eigenen Zahlen, und
+// sie liefen auseinander: Am 17.07. sagte die Excel zu Adil Kheder
+// "ZU_WENIG_DATEN" (eine einzige Rueckmeldung), der Agent machte ihn zum
+// "Vorbild im Team". Gleiche Datei, gleicher Mann, gleiche Woche.
+//
+// Jetzt gibt es genau eine Quelle: Pipeline\<KW>_kpi_uebersicht.csv aus [U].
+// Dort steht je Kennzahl Wert, Menge, Ampel, Zielwert und Schwellwert. Der
+// Agent liest ab. Wer hier eine Bedingung braucht, aendert kpi_uebersicht.py -
+// und NICHT diese Datei.
+// ===========================================================================
+
+// Die Uebersicht-Zeile zu einem Techniker. Schluessel wie ueberall:
+// sortierte Namensteile + ATS, damit "Adil Kheder" und "Kheder Adil"
+// zusammenfinden (siehe namensSchluessel).
+function uebersichtIndex(zeilen) {
+  const m = new Map();
+  (zeilen || []).forEach(z => {
+    const ats = String(z.ats || "").trim();
+    const st = ats === "36" ? "5336" : ats === "35" ? "5335" : ats;
+    m.set(namensSchluessel(z.name) + "#" + st, z);
+  });
+  return m;
 }
 
-// NFTQ ist eine FEHLERQUOTE: niedriger ist besser, und jede Kategorie hat einen
-// EIGENEN Zielwert aus dem Portal. Vorher stand an beiden Status-Stellen hart
-// "<= 4 gut, <= 8 warnung" fuer alle vier Spalten - die Zielwerte oben in den
-// Baselines wurden nie benutzt. Ein NFTQ-P von 9,1 % galt damit als kritisch,
-// obwohl der ZW 8,5 mit Warnbereich bis 12 ist.
-function getNFTQStatus(wert, ziel, warn, menge) {
-  if (wert === null || wert === undefined || isNaN(wert)) return null;
-  if (menge !== null && menge !== undefined && menge < MINDEST_NFTQ) return null;
-  if (wert <= ziel) return "gut";
-  if (wert <= warn) return "warnung";
-  return "kritisch";
+// EINE Kennzahl eines Technikers, so wie [U] sie beurteilt hat.
+// Liefert immer ein Objekt - nie undefined -, damit die Aufrufer nicht jedes
+// Mal pruefen muessen. Fehlt die Uebersicht, ist ampel null und grund sagt,
+// warum: dann zeigt der Agent Zahlen ohne Urteil, statt sich eines auszudenken.
+const KEINE_UEBERSICHT = { wert: null, menge: null, ampel: null, ziel: null,
+  schwelle: null, grund: "keine Uebersicht geladen - kpi_uebersicht.csv fehlt" };
+
+// Haengt einem Techniker seine Uebersicht-Zeile an. Alles danach liest nur
+// noch t.u - deshalb steht dieser Schritt an EINER Stelle und nicht verteilt.
+function mitUebersicht(t, index) {
+  const st = String(t.standort || "");
+  return { ...t, u: index.get(namensSchluessel(t.name) + "#" + st) || null };
 }
 
-// Die drei bewerteten NFTQ-Kategorien mit ihren Portal-Zielwerten.
-// NFTQ-B (Bereitstellung) steht bewusst NICHT hier: Bereitstellung = Schalten +
-// Montage, B ist also nur die Sammelquote der beiden. Wer B mitzaehlt, zaehlt
-// dieselben NFTs zweimal - der Techniker sieht doppelt so schlecht aus, wie er
-// ist. Telekom hat fuer B folgerichtig auch keinen Zielwert. B wird weiter
-// ANGEZEIGT, aber nicht bewertet.
-function nftqStatusListe(t, bl) {
-  return [
-    getNFTQStatus(t.nftq_s, bl.nftq_schalten ?? 6.6, 10, t.menge_s),
-    getNFTQStatus(t.nftq_m, bl.nftq_montage ?? 4, 8, t.menge_m),
-    getNFTQStatus(t.nftq_p, bl.nftq_pb ?? 8.5, 12, t.menge_p),
-  ].filter(x => x !== null);
+function kpiAusU(t, kennzahl) {
+  const k = t && t.u && t.u.kpi && t.u.kpi[kennzahl];
+  return k || KEINE_UEBERSICHT;
 }
 
-function getStatus(value, baseline) {
-  if (value === null || value === undefined || isNaN(value)) return "unbekannt";
-  if (value >= baseline) return "gut";            // Ziel erreicht oder besser
-  if (value >= baseline * 0.9) return "warnung";  // bis 10% unter Ziel
-  return "kritisch";                              // mehr als 10% unter Ziel
+// Nur echte Urteile. null heisst "nicht bewertet" und darf NIE als "gut"
+// durchgehen - genau daran ist der Agent frueher gescheitert.
+function ampelU(t, kennzahl) {
+  return kpiAusU(t, kennzahl).ampel;
 }
 
-function getOTStatus(tech) {
-  if (tech.a0 !== null && tech.a0 > 10) return "kritisch";
-  if (tech.a_ges !== null && tech.a_ges < 85) return "kritisch";
-  if (tech.a1 !== null && tech.a1 < 45) return "kritisch";
-  if (tech.a1 !== null && tech.a1 < 60) return "warnung";
-  if (tech.ax !== null && tech.ax > 20) return "warnung";
-  return "gut";
+// Die schlechteste Ampel des Technikers - aus den Urteilen, die [U] gefaellt
+// hat. Nicht bewertete Kennzahlen (kein Zielwert, zu wenig Daten, keine Daten)
+// zaehlen NICHT mit; sie duerfen weder nach "gut" noch nach "kritisch" kippen.
+// Hat [U] zu keiner einzigen Kennzahl ein Urteil, gibt es auch keins: null.
+//
+// One Touch steht bewusst nicht mehr drin. Der Agent hat A1/A0/A Ges. frueher
+// nach selbst erfundenen Schwellen gefaerbt (a0 > 10 kritisch, a1 < 60 warnung).
+// In der Zusatzvereinbarung Bonus-Malus kommt One Touch NICHT vor, in keiner
+// Telekom-Folie steht ein Zielwert dafuer. Also wird es angezeigt, nicht
+// beurteilt.
+const BEWERTETE_KENNZAHLEN = ["termintreue", "cc", "nps_montage", "nps_pb",
+  "nftq_s", "nftq_m", "nftq_p"];
+
+function techWorst(t) {
+  const rang = { kritisch: 0, warnung: 1, gut: 2 };
+  const urteile = BEWERTETE_KENNZAHLEN.map(k => ampelU(t, k)).filter(x => x !== null);
+  if (!urteile.length) return null;
+  return urteile.sort((a, b) => rang[a] - rang[b])[0];
 }
 
-function techWorst(t, baselines) {
-  const bl = String(t.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
-  const s = [];
-  if (t.a1 != null || t.a_ges != null || t.a0 != null) s.push(getOTStatus(t));
-  nftqStatusListe(t, bl).forEach(x => s.push(x));
-  if (t.cc_rate != null) s.push(getStatus(t.cc_rate, bl.cc_rate));
-  if (t.termintreue != null) s.push(getStatus(t.termintreue, bl.termintreue));
-  if (t.loesungsquote != null) s.push(getStatus(t.loesungsquote, bl.loesungsquote));
-  // NPS Schalten (Feld "nps") wird NICHT bewertet: dafuer gibt es in der
-  // Gesamtsicht Qualitaet keinen Zielwert. Adil Kheder stand deswegen mit
-  // -100 aus EINER Bewertung als kritisch da, waehrend sein NPS PB 100 war.
-  if (t.nps_montage != null) s.push(getNPSStatus(t.nps_montage, bl.nps_montage ?? 68, t.anzahl_nps_montage));
-  if (t.nps_pb != null) s.push(getNPSStatus(t.nps_pb, bl.nps_pb ?? 68, t.anzahl_nps_pb));
-  return s.includes("kritisch") ? "kritisch" : s.includes("warnung") ? "warnung" : "gut";
+// Die drei bewerteten NFTQ-Kategorien. NFTQ-B fehlt hier weiterhin, und jetzt
+// steht der Grund in der Datei: B = Schalten + Montage, Telekom hat dafuer
+// keinen Zielwert - [U] schreibt "KEIN_ZIEL", und ampelU liefert null.
+function nftqStatusListe(t) {
+  return ["nftq_s", "nftq_m", "nftq_p"].map(k => ampelU(t, k)).filter(x => x !== null);
 }
 
 function getTrend(current, previous) {
@@ -698,7 +803,11 @@ function KPIBar({ value, baseline, label, trend }) {
 // Kheder hatte einen knallroten Balken bei 18,18 % fuer eine Kennzahl, die
 // dieselben Nachfolgetickets doppelt zaehlt.
 // Jetzt rechnet der Balken NICHT mehr - er bekommt den Status fertig geliefert.
-function NFTQBar({ value, label, status, menge, hinweis }) {
+// ziel kommt seit 17.07.2026 mit: Der Balken zeigt an, wogegen gemessen wird.
+// Vorher hatte NFTQBar "const z = ziel || 4" - und NIEMAND uebergab ziel, also
+// faerbte er alle vier Kategorien nach dem pauschalen 4/8. Jetzt rechnet er gar
+// nicht mehr, er bekommt das Urteil fertig geliefert.
+function NFTQBar({ value, label, status, menge, hinweis, ziel }) {
   if (value === null || value === undefined || isNaN(value)) return null;
   const color = status === "kritisch" ? "#f87171" : status === "warnung" ? "#fbbf24"
               : status === "gut" ? "#4ade80" : "#6b7280";
@@ -711,7 +820,11 @@ function NFTQBar({ value, label, status, menge, hinweis }) {
               "4 von 18" sagt alles. */}
           {menge !== null && menge !== undefined ? <span style={{ color: "#4b5563" }}> ({menge} Auftraege)</span> : null}
         </span>
-        <span style={{ color, fontWeight: status ? 700 : 400, whiteSpace: "nowrap" }}>{value.toFixed(2)}%</span>
+        <span style={{ color, fontWeight: status ? 700 : 400, whiteSpace: "nowrap" }}>
+          {value.toFixed(2)}%
+          {ziel !== null && ziel !== undefined
+            ? <span style={{ color: "#4b5563", fontWeight: 400 }}> / {ziel}%</span> : null}
+        </span>
       </div>
       <div style={{ background: "#1f2937", borderRadius: 2, height: 6 }}>
         <div style={{ width: `${Math.min(100, value * 4)}%`,
@@ -762,10 +875,13 @@ function TechCard({ tech, baselines, vorperiode, ursachen }) {
   //
   // Wer hier kuenftig eine Bedingung braucht: NICHT nachbauen, sondern
   // techWorst() erweitern. Eine Regel, ein Ergebnis.
-  const worst = techWorst(tech, baselines);
+  const worst = techWorst(tech);
   const borderColor = worst === "kritisch" ? "#7f1d1d" : worst === "warnung" ? "#78350f" : "#14532d";
   const quelleLabel = { smsfeedback: "SMS-Feedback", smsfeedbackschalten: "Schalten", nftq: "NFTQ", standard: "Manuell", onetouch: "OneTouch", alle: "Alle" }[tech.quelle] || "";
-  const npsStatus = tech.nps !== null ? getNPSStatus(tech.nps) : null;
+  // NPS Schalten hat keinen Zielwert (steht so in der Uebersicht: KEIN_ZIEL),
+  // also gibt es hier nie eine Farbe. Frueher rief diese Zeile getNPSStatus()
+  // ohne Menge und ohne Ziel auf - und faerbte eine Zahl, die niemand bewertet.
+  const npsStatus = ampelU(tech, "nps_schalten");
   const npsColor = npsStatus === "kritisch" ? "#f87171" : npsStatus === "warnung" ? "#fbbf24" : "#4ade80";
   return (
     <div style={{ background: "#111827", border: `1px solid ${borderColor}`, borderRadius: 8, padding: "16px 18px", marginBottom: 12 }}>
@@ -802,17 +918,16 @@ function TechCard({ tech, baselines, vorperiode, ursachen }) {
         {/* Der Status kommt aus derselben Funktion wie ueberall sonst.
             Bereitstellung bekommt bewusst KEINEN - mit Begruendung darunter,
             damit niemand denkt, da sei etwas vergessen worden. */}
-        <NFTQBar value={tech.nftq_b} label="Bereitstellung" menge={tech.menge_b} status={null}
-          hinweis="ohne Urteil: Bereitstellung = Schalten + Montage, zaehlt dieselben Nachfolgetickets nochmal. Telekom gibt dafuer keinen Zielwert vor." />
-        <NFTQBar value={tech.nftq_s} label="Schalten" menge={tech.menge_s}
-          status={getNFTQStatus(tech.nftq_s, bl.nftq_schalten ?? 6.6, 10, tech.menge_s)}
-          hinweis={`unter ${MINDEST_NFTQ} Auftraegen - daraus laesst sich nichts ablesen`} />
-        <NFTQBar value={tech.nftq_m} label="Montage" menge={tech.menge_m}
-          status={getNFTQStatus(tech.nftq_m, bl.nftq_montage ?? 4, 8, tech.menge_m)}
-          hinweis={`unter ${MINDEST_NFTQ} Auftraegen - daraus laesst sich nichts ablesen`} />
-        <NFTQBar value={tech.nftq_p} label="Problembehebung" menge={tech.menge_p}
-          status={getNFTQStatus(tech.nftq_p, bl.nftq_pb ?? 8.5, 12, tech.menge_p)}
-          hinweis={`unter ${MINDEST_NFTQ} Auftraegen - daraus laesst sich nichts ablesen`} />
+        {/* Wert, Menge, Ampel und die Begruendung kommen jetzt ALLE aus der
+            Uebersicht. Frueher stand hier viermal ein Zielwert im Code
+            (6,6 / 4 / 8,5) - und die Bereitstellung bekam ihre Begruendung als
+            festen Satz, obwohl [U] laengst "KEIN_ZIEL" dazu schreibt. */}
+        {[["nftq_b", "Bereitstellung"], ["nftq_s", "Schalten"],
+          ["nftq_m", "Montage"], ["nftq_p", "Problembehebung"]].map(([id, label]) => {
+          const k = kpiAusU(tech, id);
+          return <NFTQBar key={id} value={k.wert} label={label} menge={k.menge}
+            status={k.ampel} hinweis={k.grund} ziel={k.ziel} />;
+        })}
       </>)}
       {isSMS && (<>
         <KPIBar value={tech.cc_rate} baseline={bl.cc_rate} label="CC-Rate"
@@ -826,18 +941,16 @@ function TechCard({ tech, baselines, vorperiode, ursachen }) {
         ); })()}
         <KPIBar value={tech.loesungsquote} baseline={bl.loesungsquote} label="Lösungsquote"
           trend={vorperiode ? getTrend(tech.loesungsquote, vorperiode.loesungsquote) : null} />
-        {[
-          { wert: tech.nps_montage, ziel: bl.nps_montage ?? 68, label: "NPS Montage", anz: tech.anzahl_nps_montage },
-          { wert: tech.nps_pb, ziel: bl.nps_pb ?? 68, label: "NPS Problembeh.", anz: tech.anzahl_nps_pb },
-          // NPS Schalten hat KEINEN Zielwert in der Gesamtsicht Qualitaet.
-          // Vorher stand hier "ziel: bl.nps ?? 67" - der Agent haette ab zwei
-          // Rueckmeldungen gegen 68 geurteilt. Dass bei Alae "nicht bewertet"
-          // stand, lag nur an der Mindestmenge, nicht am fehlenden Zielwert.
-          { wert: tech.nps, ziel: null, label: "NPS Schalten", anz: tech.anzahl_nps, ohneZiel: true },
-        ].filter(n => n.wert !== null && n.wert !== undefined && !isNaN(n.wert)).map(n => {
-          // n.anz MUSS mit: sonst bewertet die Anzeige, was die Rechnung
-          // daneben verschweigt - und im selben Kaestchen stuenden zwei Ampeln.
-          const st = n.ohneZiel ? null : getNPSStatus(n.wert, n.ziel, n.anz);
+        {/* Die drei NPS - Wert, Ziel, Menge und Urteil aus der Uebersicht.
+            Hier standen bis 17.07.2026 die Zielwerte im Code ("?? 68"), und
+            NPS Schalten brauchte ein eigenes Merkmal ohneZiel, damit es nicht
+            doch bewertet wird. Jetzt sagt die Datei selbst, was kein Ziel hat. */}
+        {[["nps_montage", "NPS Montage"], ["nps_pb", "NPS Problembeh."],
+          ["nps_schalten", "NPS Schalten"]].map(([id, label]) => {
+          const k = kpiAusU(tech, id);
+          return { ...k, label, wert: k.wert, anz: k.menge };
+        }).filter(n => n.wert !== null && n.wert !== undefined && !isNaN(n.wert)).map(n => {
+          const st = n.ampel;
           const c = st === "kritisch" ? "#f87171" : st === "warnung" ? "#fbbf24"
                   : st === "gut" ? "#4ade80" : "#6b7280";
           return (
@@ -847,11 +960,12 @@ function TechCard({ tech, baselines, vorperiode, ursachen }) {
               <span style={{ background: st ? STATUS_STYLE[st]?.bg : "transparent", color: st ? c : "#6b7280", padding: "1px 6px", borderRadius: 3, fontSize: 10, fontFamily: "monospace", fontWeight: st ? 700 : 400 }}>
                 {st === "kritisch" ? "KRITISCH" : st === "warnung" ? "WARNUNG" : st === "gut" ? "GUT" : "nicht bewertet"}
               </span>
+              {/* Ziel und Begruendung stehen in der Uebersicht. Ohne Zielwert
+                  gibt es keins anzuzeigen - dann sagt der Grund, warum. */}
               <span style={{ fontSize: 10, color: "#4b5563" }}>
-                {n.ohneZiel ? "kein Telekom-Zielwert - Wert ohne Urteil" : `Ziel: ${n.ziel}`}
+                {n.ziel !== null && n.ziel !== undefined ? `Ziel: ${n.ziel}` : ""}
                 {n.anz !== null && n.anz !== undefined ? ` (${n.anz} Rueckmeldungen)` : ""}
-                {!n.ohneZiel && st === null && n.anz !== null && n.anz !== undefined && n.anz < MINDEST_NPS
-                  ? ` - unter ${MINDEST_NPS}, daraus laesst sich nichts ablesen` : ""}
+                {n.grund ? (n.ziel !== null ? ` - ${n.grund}` : n.grund) : ""}
               </span>
             </div>
           );
@@ -990,13 +1104,17 @@ function berichtText(name, meine, tech, bl) {
         (status ? `   ${wort[status]}` : "   (kein Zielwert / zu wenig Daten)") +
         (basis ? `   [Basis: ${basis}]` : ""));
     };
-    nimm("Termintreue", f(tech.termintreue), tech.termintreue != null ? getStatus(tech.termintreue, bl.termintreue) : null);
-    nimm("Courtesy Call", f(tech.cc_rate), tech.cc_rate != null ? getStatus(tech.cc_rate, bl.cc_rate) : null);
-    nimm("NPS Problembehebung", f(tech.nps_pb), getNPSStatus(tech.nps_pb, bl.nps_pb ?? 68, tech.anzahl_nps_pb), tech.anzahl_nps_pb);
-    nimm("NPS Montage", f(tech.nps_montage), getNPSStatus(tech.nps_montage, bl.nps_montage ?? 68, tech.anzahl_nps_montage), tech.anzahl_nps_montage);
-    nimm("NFTQ Montage %", f(tech.nftq_m), getNFTQStatus(tech.nftq_m, bl.nftq_montage ?? 4, 8, tech.menge_m), tech.menge_m);
-    nimm("NFTQ Schalten %", f(tech.nftq_s), getNFTQStatus(tech.nftq_s, bl.nftq_schalten ?? 6.6, 10, tech.menge_s), tech.menge_s);
-    nimm("NFTQ Problembeh. %", f(tech.nftq_p), getNFTQStatus(tech.nftq_p, bl.nftq_pb ?? 8.5, 12, tech.menge_p), tech.menge_p);
+    // Der Bericht geht an den Techniker. Deshalb steht hier genau das, was auch
+    // in der Excel steht - Wert, Urteil und Basis aus der Uebersicht. Bis
+    // 17.07.2026 rechnete diese Stelle selbst und konnte einem Mann etwas
+    // anderes schreiben, als seine Zeile in der Uebersicht sagt.
+    [["termintreue", "Termintreue"], ["cc", "Courtesy Call"],
+     ["nps_pb", "NPS Problembehebung"], ["nps_montage", "NPS Montage"],
+     ["nftq_m", "NFTQ Montage %"], ["nftq_s", "NFTQ Schalten %"],
+     ["nftq_p", "NFTQ Problembeh. %"]].forEach(([id, label]) => {
+      const k = kpiAusU(tech, id);
+      nimm(label, f(k.wert), k.ampel, k.menge);
+    });
     if (zeilen.length) {
       z.push(`DEINE ZAHLEN${ats ? ` (ATS ${ats})` : ""}`);
       z.push(trenner);
@@ -1760,6 +1878,7 @@ const getTermintreeuPunkte = (prozent) => {
 export default function KPIAgent() {
   const [gespeichert, setGespeichert] = useState({});
   const [ursachen, setUrsachen] = useState([]);
+  const [uebersicht, setUebersicht] = useState([]);
   const [ordner, setOrdner] = useState(null);       // FileSystemDirectoryHandle
   const [ordnerLaeuft, setOrdnerLaeuft] = useState(false);
   const kannOrdner = typeof window !== "undefined" && "showDirectoryPicker" in window;
@@ -1823,6 +1942,8 @@ export default function KPIAgent() {
       if (savedA) setArchiv(JSON.parse(savedA));
       const savedU = localStorage.getItem(URSACHEN_KEY);
       if (savedU) setUrsachen(JSON.parse(savedU));
+      const savedUe = localStorage.getItem(UEBERSICHT_KEY);
+      if (savedUe) setUebersicht(JSON.parse(savedUe));
       // Gemerkten Ordner wiederfinden - aber NICHT ungefragt lesen. Der Browser
       // will die Erlaubnis je Sitzung neu bestaetigt haben, und das darf nur
       // ein Klick von Arash ausloesen, kein Seitenaufruf.
@@ -1835,6 +1956,7 @@ export default function KPIAgent() {
   useEffect(() => { try { localStorage.setItem(BASELINE_KEY, JSON.stringify(baselines)); } catch(e) {} }, [baselines]);
   useEffect(() => { try { localStorage.setItem(ARCHIV_KEY, JSON.stringify(archiv)); } catch(e) {} }, [archiv]);
   useEffect(() => { try { localStorage.setItem(URSACHEN_KEY, JSON.stringify(ursachen)); } catch(e) {} }, [ursachen]);
+  useEffect(() => { try { localStorage.setItem(UEBERSICHT_KEY, JSON.stringify(uebersicht)); } catch(e) {} }, [uebersicht]);
 
   useEffect(() => {
     if (!loading && pending) {
@@ -1926,6 +2048,14 @@ export default function KPIAgent() {
     // Der Ursachenbericht geht einen eigenen Weg: er ersetzt keine
     // Kennzahlen-Kategorie und darf die Ansicht nicht umschalten. Er legt sich
     // neben die Zahlen und taucht in den Technikerkarten auf.
+    // Die Uebersicht ist keine Kategorie: kein eigener Reiter, kein Umschalten
+    // der Ansicht. Sie liefert nur die Urteile zu den Zahlen, die schon da sind.
+    if (rows[0] && rows[0].quelle === "uebersicht") {
+      setUebersicht(rows);
+      setError("ok Uebersicht aus [U] geladen - " + rows.length
+        + " Techniker. Ampel und Zielwerte kommen ab jetzt von dort.");
+      return;
+    }
     if (rows[0] && rows[0].quelle === "ursachen") {
       setUrsachen(rows);
       setError("ok " + rows.length + " Befunde geladen - Reiter \"Berichte\" und unten in jeder Technikerkarte.");
@@ -2019,7 +2149,15 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
     }
   }, [handleRows]);
 
+  // Beim "Ordner verbinden" filtert dateiRolle die Detail-CSVs raus - beim
+  // Hochladen tat es das NICHT. Arash waehlte am 17.07. acht Dateien aus; die
+  // *_details.csv landeten als "Manuell (320)" (eine Zeile je Anrufversuch) und
+  // verstopften die Ansicht. Derselbe Filter, beide Wege.
   const processFile = useCallback(async (file) => {
+    if (/_details\.csv$/i.test(file.name)) {
+      setError(`"${file.name}" ist eine Detail-Datei - die gehoert in den Ursachenbericht, nicht in den Agenten. Uebersprungen.`);
+      return;
+    }
     // Gibt jetzt ein Versprechen zurueck, damit mehrere Dateien NACHEINANDER
     // laufen koennen. Der alte FileReader arbeitete mit Rueckrufen - darauf
     // kann man nicht warten. Fuenf Dateien waeren gleichzeitig losgelaufen und
@@ -2045,6 +2183,9 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
     setShowPeriodDialog(true);
   }, []);
 
+  // Der Nachschlag-Index. Einmal gebaut, von allen benutzt.
+  const uIndex = React.useMemo(() => uebersichtIndex(uebersicht), [uebersicht]);
+
   const angezeigt = (aktiveKategorie === "alle"
     ? (() => {
         const merged = {};
@@ -2068,9 +2209,18 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
     : (gespeichert[aktiveKategorie] || [])
   ).filter(t => {
     if (nurTechniker && namensSchluessel(t.name) !== nurTechniker) return false;
-    const auftr = typeof t.auftraege === "number" ? t.auftraege : parseInt(t.auftraege) || 0;
+    // Der Mindest-Auftrags-Filter darf nur greifen, wenn es ueberhaupt eine
+    // Auftragszahl GIBT. Bis 17.07.2026 stand hier parseInt(...) || 0 - Formate
+    // ohne Auftragsspalte lieferten "-", das wurde zu 0, und der Filter warf
+    // sie alle raus. Arash sah dann "SMS-Feedback (8)" im Reiter und "Noch
+    // keine Daten" in der Ansicht. Ein Filter sortiert aus, weil ein Wert zu
+    // klein ist - nicht, weil er fehlt.
+    const roh = t.auftraege;
+    if (roh === null || roh === undefined || roh === "-" || roh === "") return true;
+    const auftr = typeof roh === "number" ? roh : parseInt(roh);
+    if (isNaN(auftr)) return true;
     return auftr >= minAuftraege;
-  });
+  }).map(t => mitUebersicht(t, uIndex));
 
   // Alle Namen, die es irgendwo gibt - aus den Kennzahlen UND aus dem
   // Ursachenbericht. Ein Techniker, der diese Woche nur Befunde hat, soll
@@ -2086,44 +2236,11 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
 
   const hatDaten = Object.keys(gespeichert).length > 0;
 
-  const berechneMassnahmen = (techs, bl_baselines) => {
-    return techs.map(t => {
-      const bl = String(t.standort) === "5336" ? bl_baselines.fs5336 : bl_baselines.fs5335;
-      const sl = [];
-      if (t.cc_rate !== null) sl.push(getStatus(t.cc_rate, bl.cc_rate));
-      if (t.termintreue !== null) sl.push(getStatus(t.termintreue, bl.termintreue));
-      if (t.loesungsquote !== null) sl.push(getStatus(t.loesungsquote, bl.loesungsquote));
-      // NPS Schalten (t.nps) bleibt hier bewusst aussen vor - kein Zielwert.
-      if (t.nps_montage != null) sl.push(getNPSStatus(t.nps_montage, bl.nps_montage ?? 68, t.anzahl_nps_montage));
-      if (t.nps_pb != null) sl.push(getNPSStatus(t.nps_pb, bl.nps_pb ?? 68, t.anzahl_nps_pb));
-      if (t.a1 !== null) sl.push(t.a1 >= 60 ? "gut" : t.a1 >= 45 ? "warnung" : "kritisch");
-      if (t.a0 !== null && t.a0 > 10) sl.push("kritisch");
-      // Dieselbe Rechnung wie in techWorst - EINE Stelle, sonst laufen die zwei
-      // Ansichten des Agenten frueher oder spaeter auseinander.
-      nftqStatusListe(t, bl).forEach(x => sl.push(x));
-      // null heisst "nicht bewertet" (kein Zielwert oder zu wenig Daten) und
-      // darf nicht als "gut" durchgehen.
-      const bewertet = sl.filter(x => x !== null && x !== undefined);
-      const worst = bewertet.length === 0 ? "gut" : bewertet.includes("kritisch") ? "kritisch" : bewertet.includes("warnung") ? "warnung" : "gut";
-      // Frueher stand hier "weit ueber Zielwert 50" - ein dritter, erfundener
-      // NPS-Zielwert neben den 68 aus dem Portal und den 20 in getNPSStatus.
-      const lob = t.nps_pb !== null && t.nps_pb !== undefined && t.nps_pb >= (bl.nps_pb ?? 68)
-        ? "Sehr gut! NPS Problembehebung " + Math.round(t.nps_pb) + " ueber Zielwert " + (bl.nps_pb ?? 68) + "."
-        : t.cc_rate !== null && t.cc_rate >= 96
-        ? "Sehr gute CC-Rate " + t.cc_rate.toFixed(1) + "% - Zielwert erreicht!"
-        : t.nftq_b !== null && worst === "gut"
-        ? "Alle NFTQ-Werte im Zielbereich - ausgezeichnete Qualitaetsarbeit!"
-        : t.a1 !== null && t.a1 >= 60
-        ? "Erstloesungsquote " + t.a1.toFixed(1) + "% - Zielwert erreicht!"
-        : "Hervorragende Leistung! Alle KPI-Werte im Zielbereich.";
-      return {
-        name: t.name,
-        status: worst,
-        massnahme: worst === "gut" ? lob : worst === "warnung" ? "KPI-Werte beobachten und gezielt verbessern." : "Sofortgesprach mit Leitstelle - Verbesserungsmassnahmen festlegen.",
-        betreff: worst === "gut" ? "Lob: Sehr gute KPI-Leistung" : "KPI Massnahme erforderlich"
-      };
-    });
-  };
+  // berechneMassnahmen() stand hier bis 17.07.2026 - 25 Zeilen mit EIGENEN
+  // Schwellen (a1 >= 60, a0 > 10, NPS gegen 68). Beim Aufraeumen fiel auf: die
+  // Funktion wurde NIE aufgerufen. Sie hat also nie etwas angezeigt und war
+  // trotzdem eine Stelle, an der jemand haette nachziehen muessen. Geloescht.
+  // Die Massnahmen kommen aus der Ansicht weiter unten.
 
   const berechneTechScore = useCallback((tech) => {
     const v = (x) => x !== null && x !== undefined && !isNaN(x);
@@ -2195,11 +2312,21 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
     // die KI raten. Sie schrieb dann "Basis unbekannt" und erfand "0
     // Rueckmeldungen". Eine Quote ohne ihre Basis ist genau die halbe Wahrheit,
     // gegen die dieses Projekt gebaut ist.
-    const m = (v) => (v === null || v === undefined ? "unbekannt" : String(v));
+    // Was an die KI geht, ist jetzt die Uebersicht - fertig beurteilt, mit
+    // Menge, Zielwert und Grund. Vorher gingen die Rohquoten hin, und die
+    // Zielwerte standen als Prosa im Prompt: zwei Kopien derselben Zahl, die
+    // auseinanderliefen. Die KI schrieb dann "NFTQ-Bereitstellung kritisch
+    // (Ziel <=4%)" - ein Urteil, das es nirgends gibt.
+    const zz = (x) => (x === null || x === undefined ? "-" : String(x));
     const dataStr = angezeigt.map(t => {
-      if (t.quelle === "onetouch") return `${t.name} (FS${t.standort}): A-Ges=${t.a_ges?.toFixed(1) ?? "-"}%, A1=${t.a1?.toFixed(1) ?? "-"}%, AX=${t.ax?.toFixed(1) ?? "-"}%, A0=${t.a0?.toFixed(1) ?? "-"}%, Aufträge=${t.auftraege}`;
-      if (t.quelle === "nftq") return `${t.name} (FS${t.standort}): NFTQ-B=${t.nftq_b?.toFixed(2) ?? "-"}% (Basis ${m(t.menge_b)} Aufträge), NFTQ-S=${t.nftq_s?.toFixed(2) ?? "-"}% (Basis ${m(t.menge_s)}), NFTQ-M=${t.nftq_m?.toFixed(2) ?? "-"}% (Basis ${m(t.menge_m)}), NFTQ-P=${t.nftq_p?.toFixed(2) ?? "-"}% (Basis ${m(t.menge_p)}), Aufträge gesamt=${t.auftraege}`;
-      return `${t.name} (FS${t.standort}): CC=${t.cc_rate?.toFixed(1) ?? "-"}%, Termintreue=${t.termintreue?.toFixed(1) ?? "-"}%, Lösungsquote=${t.loesungsquote?.toFixed(1) ?? "-"}%, NPS-Montage=${t.nps_montage?.toFixed(0) ?? "-"} (aus ${m(t.anzahl_nps_montage)} Rückmeldungen), NPS-PB=${t.nps_pb?.toFixed(0) ?? "-"} (aus ${m(t.anzahl_nps_pb)} Rückmeldungen), NPS-Schalten=${t.nps?.toFixed(0) ?? "-"} (aus ${m(t.anzahl_nps)} Rückmeldungen), Aufträge=${t.auftraege}`;
+      if (!t.u) return `${t.name} (FS${t.standort}): keine Zeile in der KPI-Uebersicht - NICHT beurteilen.`;
+      const zeilen = Object.entries(t.u.kpi)
+        .filter(([, k]) => k.wert !== null || k.grund)
+        .map(([id, k]) => `    ${id}: wert=${zz(k.wert)} menge=${zz(k.menge)} `
+          + `ampel=${k.ampel ?? "null"} ziel=${zz(k.ziel)} schwelle=${zz(k.schwelle)}`
+          + (k.grund ? ` grund="${k.grund}"` : ""));
+      return `${t.name} (FS${t.standort}) - Gesamt: ${t.u.status}, ${zz(t.u.auftraege)} Auftraege\n`
+        + zeilen.join("\n");
     }).join("\n");
     // Letzte archivierte KW fuer Vergleich
     let vorperiodeStr = "";
@@ -2225,37 +2352,25 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
 
       // Massnahmen fuer jeden Techniker berechnen
       const alleMassnahmen = angezeigt.map(t => {
-        const bl = String(t.standort) === "5336" ? (baselines.fs5336 || DEFAULT_BASELINES.fs5336) : (baselines.fs5335 || DEFAULT_BASELINES.fs5335);
-        const statusList = [];
-        const v = (x) => x !== null && x !== undefined && !isNaN(x);
-        if (v(t.cc_rate) && bl.cc_rate) statusList.push(getStatus(t.cc_rate, bl.cc_rate));
-        if (v(t.termintreue) && bl.termintreue) statusList.push(getStatus(t.termintreue, bl.termintreue));
-        if (v(t.loesungsquote) && bl.loesungsquote) statusList.push(getStatus(t.loesungsquote, bl.loesungsquote));
-        // NPS Schalten (t.nps) bleibt aussen vor - kein Portal-Zielwert.
-        if (v(t.nps_montage)) statusList.push(getNPSStatus(t.nps_montage, bl.nps_montage ?? 68, t.anzahl_nps_montage));
-        if (v(t.nps_pb)) statusList.push(getNPSStatus(t.nps_pb, bl.nps_pb ?? 68, t.anzahl_nps_pb));
-        if (v(t.a1)) statusList.push(t.a1 >= 60 ? "gut" : t.a1 >= 45 ? "warnung" : "kritisch");
-        if (v(t.a0) && t.a0 > 10) statusList.push("kritisch");
-        // DRITTE Stelle, die frueher selbst gerechnet hat - und mit WIEDER
-        // ANDEREN Schwellen als die zwei oben: Schalten 7 statt 6,6,
-        // Problembehebung 8,7 statt 8,5. Derselbe Agent gab also je nach
-        // Ansicht verschiedene Ampeln aus. Jetzt rechnet nftqStatusListe()
-        // an allen drei Stellen - eine Regel, ein Ergebnis.
-        nftqStatusListe(t, bl).forEach(x => statusList.push(x));
-        const bewertet2 = statusList.filter(x => x !== null && x !== undefined);
-        const worst = bewertet2.length === 0 ? "gut" : bewertet2.includes("kritisch") ? "kritisch" : bewertet2.includes("warnung") ? "warnung" : "gut";
-        const nps_val = t.nps !== null ? t.nps : 0;
-        const cc_val = t.cc_rate !== null ? t.cc_rate : 0;
-        const a1_val = t.a1 !== null ? t.a1 : 0;
-        const lob = t.quelle === "nftq" && worst === "gut"
+        // Hier standen bis 17.07.2026 eigene Schwellen - und zwar WIEDER andere
+        // als an den zwei Stellen darueber (Schalten 7 statt 6,6, PB 8,7 statt
+        // 8,5, A1 >= 60, A0 > 10). Derselbe Agent gab je nach Ansicht
+        // verschiedene Ampeln aus. Jetzt: eine Quelle, ein Urteil.
+        // Kein Urteil -> "gut" waere gelogen; die Massnahme sagt es dann selbst.
+        const worst = techWorst(t) ?? "gut";
+        // Das Lob. Hier standen die letzten drei erfundenen Zielwerte des
+        // Agenten: "?? 68" fuer den NPS, "Zielwert 96%" fuer die CC-Rate und
+        // "Zielwert 60%" fuer A1 - letzteres fuer eine Kennzahl, fuer die es
+        // ueberhaupt keinen Zielwert gibt. Jetzt kommt jede Zahl aus der Uebersicht.
+        const pb = kpiAusU(t, "nps_pb");
+        const ccU = kpiAusU(t, "cc");
+        const lob = pb.ampel === "gut" && pb.wert != null
+          ? "Ausgezeichnet! NPS Problembehebung " + pb.wert.toFixed(0) + " ueber Zielwert " + pb.ziel + "!"
+          : ccU.ampel === "gut" && ccU.wert != null
+          ? "Sehr gute Courtesy-Call-Rate " + ccU.wert.toFixed(1) + "% - Zielwert " + ccU.ziel + "% erreicht!"
+          : nftqStatusListe(t).length > 0 && nftqStatusListe(t).every(x => x === "gut")
           ? "Alle bewerteten NFTQ-Werte im Zielbereich - ausgezeichnete Qualitaetsarbeit!"
-          : v(t.nps_pb) && t.nps_pb >= (bl.nps_pb ?? 68)
-          ? "Ausgezeichnet! NPS Problembehebung " + t.nps_pb.toFixed(0) + " ueber Zielwert " + (bl.nps_pb ?? 68) + " - Vorbild im Team!"
-          : t.cc_rate !== null && t.cc_rate >= 96
-          ? "Sehr gute CC-Rate " + cc_val.toFixed(1) + "% - Zielwert 96% erreicht!"
-          : t.a1 !== null && t.a1 >= 60
-          ? "Erstloesungsquote " + a1_val.toFixed(1) + "% - Zielwert 60% erreicht!"
-          : "Hervorragende Leistung! Alle KPI-Werte im Zielbereich - weiter so!";
+          : "Alle bewerteten Kennzahlen im Zielbereich - weiter so!";
         return {
           name: t.name,
           status: worst,
@@ -2295,23 +2410,16 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
     if (kwInput === null) return; // Abgebrochen
     const datatenMitStatus = {};
     Object.entries(gespeichert).forEach(([kat, techs]) => {
+      // Fuer das Archiv. Hier stand bis 17.07.2026 die ZEHNTE Regelquelle des
+      // Agenten, und sie war die schlechteste von allen:
+      //   const vals = [t.nftq_b, t.nftq_s, t.nftq_m, t.nftq_p].filter(Boolean);
+      //   status = vals.some(v => v > 10) ? "kritisch" : vals.some(v => v > 5) ...
+      // Schwellen 5 und 10 - frei erfunden, nirgends sonst im Agenten, in keinem
+      // Telekom-Papier. NFTQ-B mitgezaehlt. Und filter(Boolean) wirft jede 0
+      // weg: wer keinen einzigen Fehler hatte, fiel aus der Bewertung.
+      // Jetzt kommt der Status aus derselben Quelle wie ueberall.
       datatenMitStatus[kat] = techs.map(t => {
-        const bl = String(t.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
-        let status = "gut";
-        if (t.quelle === "onetouch") status = getOTStatus(t);
-        else if (t.quelle === "nftq") {
-          const vals = [t.nftq_b, t.nftq_s, t.nftq_m, t.nftq_p].filter(Boolean);
-          status = vals.some(v => v > 10) ? "kritisch" : vals.some(v => v > 5) ? "warnung" : "gut";
-        } else {
-          const statuses = [
-            t.cc_rate !== null ? getStatus(t.cc_rate, bl.cc_rate) : null,
-            t.termintreue !== null ? getStatus(t.termintreue, bl.termintreue) : null,
-            t.nps !== null ? getNPSStatus(t.nps) : null,
-            t.nps_montage != null ? getNPSStatus(t.nps_montage) : null,
-            t.nps_pb != null ? getNPSStatus(t.nps_pb) : null,
-          ].filter(Boolean);
-          status = statuses.includes("kritisch") ? "kritisch" : statuses.includes("warnung") ? "warnung" : "gut";
-        }
+        const status = techWorst(mitUebersicht(t, uIndex));
         return { ...t, _status: status, _score: berechneTechScore(t) };
       });
     });
@@ -2404,35 +2512,42 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
                 )}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-                {tech.cc_rate !== null && tech.cc_rate !== undefined && (() => { const z = (String(tech.standort)==="5336"?baselines.fs5336:baselines.fs5335).cc_rate; const s = getStatus(tech.cc_rate, z); const c = s==="kritisch"?"#f87171":s==="warnung"?"#fbbf24":"#4ade80"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>CC {tech.cc_rate.toFixed(1)}% / &gt;={z}%</span>; })()}
-                {tech.termintreue !== null && tech.termintreue !== undefined && (() => { const z = (String(tech.standort)==="5336"?baselines.fs5336:baselines.fs5335).termintreue; const s = getStatus(tech.termintreue, z); const c = s==="kritisch"?"#f87171":s==="warnung"?"#fbbf24":"#4ade80"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>TT {tech.termintreue.toFixed(1)}% / &gt;={z}%</span>; })()}
-                {tech.loesungsquote !== null && tech.loesungsquote !== undefined && (() => { const z = (String(tech.standort)==="5336"?baselines.fs5336:baselines.fs5335).loesungsquote; const s = getStatus(tech.loesungsquote, z); const c = s==="kritisch"?"#f87171":s==="warnung"?"#fbbf24":"#4ade80"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>LQ {tech.loesungsquote.toFixed(1)}% / &gt;={z}%</span>; })()}
+                {(() => { const k = kpiAusU(tech, "cc"); if (k.wert === null) return null; const c = k.ampel === "kritisch" ? "#f87171" : k.ampel === "warnung" ? "#fbbf24" : k.ampel === "gut" ? "#4ade80" : "#9ca3af"; return <span title={k.grund || undefined} style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: k.ampel ? 700 : 400 }}>CC {k.wert.toFixed(1)}% / &gt;={k.ziel}%</span>; })()}
+                {(() => { const k = kpiAusU(tech, "termintreue"); if (k.wert === null) return null; const c = k.ampel === "kritisch" ? "#f87171" : k.ampel === "warnung" ? "#fbbf24" : k.ampel === "gut" ? "#4ade80" : "#9ca3af"; return <span title={k.grund || undefined} style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: k.ampel ? 700 : 400 }}>Termintreue {k.wert.toFixed(1)}% / &gt;={k.ziel}%</span>; })()}
+                {/* Loesungsquote: [U] liest sie noch nicht ein (Spalte "Erledigt B"
+                    im SMS-Feedback-Report, Zuordnung bei Telekom angefragt). Bis das
+                    geklaert ist: Zahl zeigen, nicht bewerten. Der Agent hat sie hier
+                    frueher gegen 95 gemessen - ohne die Menge zu kennen. Bei Ali
+                    Sodjajy standen dahinter ZWEI Faelle. */}
+                {tech.loesungsquote !== null && tech.loesungsquote !== undefined && <span style={{ fontSize: 10, background: "#1f2937", color: "#9ca3af", padding: "2px 8px", borderRadius: 3 }}>Loesungsquote {tech.loesungsquote.toFixed(1)}% (ohne Urteil)</span>}
                 {/* SIEBTE Stelle mit eigener Regel. Vorher: der erstbeste Wert
                     aus [nps, nps_pb, nps_montage] gegen 67, ohne Mindestmenge -
                     und an erster Stelle stand ausgerechnet NPS SCHALTEN, die
                     einzige NPS-Zahl OHNE Telekom-Zielwert. Jetzt nur die zwei
                     Kennzahlen, die einen Zielwert haben, und nur wenn genug
                     Rueckmeldungen dahinterstehen. */}
+                {/* Das NPS-Schild. Hier stand frueher ein IIFE mit eigenen
+                    Zielwerten ("?? 68") - und davor nahm es sogar den
+                    ERSTBESTEN Wert aus [nps, nps_pb, nps_montage] gegen 67,
+                    also ausgerechnet NPS Schalten, das gar keinen Zielwert hat.
+                    Jetzt: erstes NPS, zu dem [U] ueberhaupt ein Urteil hat. */}
                 {(() => {
-                  const b = String(tech.standort) === "5336" ? baselines.fs5336 : baselines.fs5335;
-                  const kand = [
-                    [tech.nps_pb, b.nps_pb ?? 68, tech.anzahl_nps_pb, "PB"],
-                    [tech.nps_montage, b.nps_montage ?? 68, tech.anzahl_nps_montage, "Montage"],
-                  ].find(([v, z, m]) => v !== null && v !== undefined && !isNaN(v)
-                    && getNPSStatus(v, z, m) !== null);
+                  const kand = [["nps_pb", "PB"], ["nps_montage", "Montage"]]
+                    .map(([id, was]) => ({ ...kpiAusU(tech, id), was }))
+                    .find(k => k.ampel !== null);
                   if (!kand) return null;
-                  const [nv, z, m, was] = kand;
-                  const st = getNPSStatus(nv, z, m);
-                  const c = st === "kritisch" ? "#f87171" : st === "warnung" ? "#fbbf24" : "#4ade80";
-                  return <span title={`NPS ${was} aus ${m} Rueckmeldungen`}
+                  const c = kand.ampel === "kritisch" ? "#f87171" : kand.ampel === "warnung" ? "#fbbf24" : "#4ade80";
+                  return <span title={`NPS ${kand.was} aus ${kand.menge} Rueckmeldungen`}
                     style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>
-                    NPS {was} {nv.toFixed(0)} / &gt;={z}</span>;
+                    NPS {kand.was} {kand.wert.toFixed(0)} / &gt;={kand.ziel}</span>;
                 })()}
-                {tech.a1 !== null && tech.a1 !== undefined && (() => { const c = tech.a1>=60?"#4ade80":tech.a1>=45?"#fbbf24":"#f87171"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>A1 {tech.a1.toFixed(1)}% / &gt;={OT_BASELINE.a1}%</span>; })()}
-                {tech.nftq_b !== null && tech.nftq_b !== undefined && (() => { const c = tech.nftq_b<=4?"#4ade80":tech.nftq_b<=8?"#fbbf24":"#f87171"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>NFTQ-B {tech.nftq_b.toFixed(1)}%</span>; })()}
-                {tech.nftq_s !== null && tech.nftq_s !== undefined && (() => { const c = tech.nftq_s<=4?"#4ade80":tech.nftq_s<=8?"#fbbf24":"#f87171"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>NFTQ-S {tech.nftq_s.toFixed(1)}%</span>; })()}
-                {tech.nftq_m !== null && tech.nftq_m !== undefined && (() => { const c = tech.nftq_m<=4?"#4ade80":tech.nftq_m<=8?"#fbbf24":"#f87171"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>NFTQ-M {tech.nftq_m.toFixed(1)}%</span>; })()}
-                {tech.nftq_p !== null && tech.nftq_p !== undefined && (() => { const c = tech.nftq_p<=4?"#4ade80":tech.nftq_p<=8?"#fbbf24":"#f87171"; return <span style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>NFTQ-P {tech.nftq_p.toFixed(1)}%</span>; })()}
+                {/* One Touch hat keinen Zielwert - im Bonus-Malus-Vertrag
+                    kommt es nicht vor. Also Zahl ohne Farbe, ohne Urteil. */}
+                {tech.a1 !== null && tech.a1 !== undefined && <span style={{ fontSize: 10, background: "#1f2937", color: "#9ca3af", padding: "2px 8px", borderRadius: 3 }}>A1 {tech.a1.toFixed(1)}%</span>}
+                {(() => { const k = kpiAusU(tech, "nftq_b"); if (k.wert === null) return null; const c = k.ampel === "kritisch" ? "#f87171" : k.ampel === "warnung" ? "#fbbf24" : k.ampel === "gut" ? "#4ade80" : "#9ca3af"; return <span title={k.grund || undefined} style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: k.ampel ? 700 : 400 }}>NFTQ-B {k.wert.toFixed(1)}%</span>; })()}
+                {(() => { const k = kpiAusU(tech, "nftq_s"); if (k.wert === null) return null; const c = k.ampel === "kritisch" ? "#f87171" : k.ampel === "warnung" ? "#fbbf24" : k.ampel === "gut" ? "#4ade80" : "#9ca3af"; return <span title={k.grund || undefined} style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: k.ampel ? 700 : 400 }}>NFTQ-S {k.wert.toFixed(1)}%</span>; })()}
+                {(() => { const k = kpiAusU(tech, "nftq_m"); if (k.wert === null) return null; const c = k.ampel === "kritisch" ? "#f87171" : k.ampel === "warnung" ? "#fbbf24" : k.ampel === "gut" ? "#4ade80" : "#9ca3af"; return <span title={k.grund || undefined} style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: k.ampel ? 700 : 400 }}>NFTQ-M {k.wert.toFixed(1)}%</span>; })()}
+                {(() => { const k = kpiAusU(tech, "nftq_p"); if (k.wert === null) return null; const c = k.ampel === "kritisch" ? "#f87171" : k.ampel === "warnung" ? "#fbbf24" : k.ampel === "gut" ? "#4ade80" : "#9ca3af"; return <span title={k.grund || undefined} style={{ fontSize: 10, background: "#1f2937", color: c, padding: "2px 8px", borderRadius: 3, fontWeight: k.ampel ? 700 : 400 }}>NFTQ-P {k.wert.toFixed(1)}%</span>; })()}
                 {tech.a0 !== null && tech.a0 !== undefined && tech.a0 > 0 && <span style={{ fontSize: 10, background: "#2e0f0f", color: "#f87171", padding: "2px 8px", borderRadius: 3, fontWeight: 700 }}>A0 {tech.a0.toFixed(1)}%</span>}
               </div>
               {isLoadingThis && <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>... KI bewertet...</div>}
@@ -2697,6 +2812,8 @@ Standort ist FS5335 wenn nicht anders erkennbar.`,
             <div style={{ fontSize: 14, color: "#f9fafb", fontWeight: 700, marginBottom: 6 }}>
               {ursachen.length > 0 && !hatDaten
                 ? "Kennzahlen fehlen - der Ursachenbericht ist da"
+                : (gespeichert[aktiveKategorie] || []).length > 0
+                ? `${(gespeichert[aktiveKategorie] || []).length} Techniker vorhanden - alle durch die Filter oben ausgeblendet`
                 : `Noch keine Daten für "${KATEGORIEN.find(k => k.id === aktiveKategorie)?.label}"`}
             </div>
             {ursachen.length > 0 && !hatDaten && (
